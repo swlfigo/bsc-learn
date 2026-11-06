@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSC 节点源码线路图 v1.8.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F1F4F3; --panel:#FFFFFF; --ink:#17212B; --ink2:#55616B; --rule:#D3DAD8; --wash:#E7ECEA;
+  --tx:#0E8A7D; --produce:#E3A008; --import:#2C5BD4; --final:#C22D67; --mev:#7A4BC0;
+  --sans:"Overpass","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--import)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+code,.mono{font-family:var(--mono);font-size:.84em}
+code{background:var(--wash);padding:.08em .35em;border-radius:3px;white-space:nowrap}
+
+/* ---------- header ---------- */
+.top{max-width:1440px;margin:0 auto;padding:48px 32px 20px}
+.top h1{font-size:46px;line-height:1.1;font-weight:800;letter-spacing:-.01em;margin:0 0 14px}
+.top .lede{font-size:18px;color:var(--ink2);max-width:46em;margin:0}
+.top .meta{font-size:14px;color:var(--ink2);margin:10px 0 0}
+
+/* ---------- map ---------- */
+.map-wrap{max-width:1440px;margin:0 auto;padding:0 32px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:14px 0}
+.toolbar .hint{font-size:14px;color:var(--ink2);margin-right:6px}
+.lbtn{font:600 14px/1 var(--sans);border:2px solid var(--c,var(--ink));background:var(--panel);color:var(--ink);
+  padding:7px 14px 6px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.lbtn::before{content:"";width:18px;height:6px;border-radius:3px;background:var(--c,var(--ink))}
+.lbtn[data-line="all"]::before{background:linear-gradient(90deg,var(--tx) 0 20%,var(--produce) 0 40%,var(--mev) 0 60%,var(--final) 0 80%,var(--import) 0)}
+.lbtn[aria-pressed="true"]{background:var(--c,var(--ink));color:#fff}
+.lbtn[data-line="produce"][aria-pressed="true"]{color:var(--ink)}
+.lbtn[aria-pressed="true"]::before{background:currentColor}
+.map-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.map-scroll{overflow-x:auto;border-right:1px solid var(--rule)}
+#map{display:block;width:100%;min-width:980px;height:auto}
+#map .line{fill:none;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;transition:opacity .25s}
+#map .transfer{fill:none;stroke:var(--ink2);stroke-width:2.5;stroke-dasharray:3 7;stroke-linecap:round;transition:opacity .25s}
+#map .badge text{font:800 12px var(--sans);text-anchor:middle;dominant-baseline:central}
+#map .st{cursor:pointer;transition:opacity .25s}
+#map .st:focus{outline:none}
+#map .st .dot{fill:#fff;stroke-width:3.5}
+#map .st .ring{fill:none;stroke:var(--ink);stroke-width:2;opacity:0}
+#map .st:hover .ring,#map .st:focus-visible .ring{opacity:.45}
+#map .st.sel .ring{opacity:1}
+#map .st text{paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}
+#map .st .nm{font:600 14.5px var(--sans);fill:var(--ink)}
+#map .st .cd{font:400 11.5px var(--mono);fill:var(--ink2)}
+#map .st.sel .nm{font-weight:800}
+#map .dim{opacity:.12}
+
+.detail{padding:22px 24px;font-size:15px;line-height:1.7;max-height:740px;overflow:auto}
+.detail h3{font-size:21px;line-height:1.25;margin:6px 0 4px;font-weight:800}
+.detail .d-code{font:400 13px var(--mono);color:var(--ink2);margin:0 0 12px;word-break:break-all}
+.detail p{margin:0 0 12px}
+.detail ul{margin:0 0 14px;padding:0;list-style:none}
+.detail li{margin:0 0 6px;padding-left:12px;border-left:2px solid var(--rule)}
+.detail li code{display:block;font-size:12px;white-space:normal;overflow-wrap:anywhere;background:none;padding:0;color:var(--ink)}
+.detail li span{display:block;font-size:13px;color:var(--ink2);line-height:1.4}
+.pill{display:inline-block;font:700 12px/1 var(--sans);padding:5px 9px 4px;border-radius:999px;color:#fff;background:var(--c);margin:0 4px 4px 0}
+.pill.produce{color:var(--ink)}
+.guide dl{margin:0}
+.guide dt{font-weight:700;display:flex;align-items:center;gap:8px;margin-top:12px}
+.guide dt::before{content:"";width:22px;height:7px;border-radius:4px;background:var(--c)}
+.guide dd{margin:2px 0 0;color:var(--ink2)}
+.guide .keys{margin-top:16px;padding-top:12px;border-top:1px solid var(--rule);color:var(--ink2);font-size:14px}
+.keysvg{vertical-align:middle;margin-right:4px}
+
+/* ---------- body ---------- */
+.doc{max-width:1440px;margin:0 auto;padding:56px 32px 80px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px}
+.toc{position:sticky;top:20px;align-self:start;font-size:14px}
+.toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--rule)}
+.toc a{display:block;padding:4px 0 4px 14px;color:var(--ink2);text-decoration:none;margin-left:-1px;border-left:3px solid transparent}
+.toc a:hover{color:var(--ink)}
+.toc a.on{color:var(--ink);font-weight:700;border-left-color:var(--c,var(--ink))}
+main{max-width:860px}
+section{margin:0 0 72px;scroll-margin-top:20px}
+h2{font-size:30px;line-height:1.2;font-weight:800;margin:0 0 18px;display:flex;align-items:center;gap:14px}
+h2::before{content:"";flex:none;width:6px;height:28px;border-radius:3px;background:var(--c,var(--ink))}
+h3{font-size:19px;font-weight:800;margin:32px 0 10px}
+main p{max-width:42em;margin:0 0 14px}
+main ul,main ol{max-width:42em;padding-left:1.4em;margin:0 0 14px}
+main li{margin:0 0 6px}
+.ref{font:400 12.5px var(--mono);color:var(--ink2);background:none;padding:0;white-space:normal;word-break:normal;overflow-wrap:anywhere}
+.note{font-size:14px;color:var(--ink2)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:6px 0 18px}
+th,td{text-align:left;padding:8px 12px 7px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-weight:700;border-bottom:2px solid var(--ink)}
+td code{font-size:12.5px}
+.tbl-scroll{overflow-x:auto}
+
+/* layers */
+.layers{display:flex;flex-direction:column;gap:14px;margin:18px 0 8px}
+.layer{display:grid;grid-template-columns:120px minmax(0,1fr);gap:16px;align-items:start}
+.layer .ln{font-weight:800;font-size:15px;line-height:1.3;padding-top:2px}
+.layer .ln span{display:block;font:400 12px var(--mono);color:var(--ink2)}
+.layers{gap:26px}
+.layer .desc{font-size:14px;color:var(--ink2);margin:0 0 8px;line-height:1.6}
+.pkgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px 24px}
+.pk .tp{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pk b{font:600 12.5px var(--mono)}
+.pk i{font-style:normal;color:var(--ink2);font-size:12px;white-space:nowrap}
+.pk .bar{height:7px;background:var(--wash);border-radius:4px;margin-top:3px}
+.pk .bar span{display:block;height:100%;min-width:3px;background:#97A3A9;border-radius:4px}
+.pk.bsc .bar span{background:var(--ink)}
+.pk.bsc b::after{content:"BSC";font:800 10px/1 var(--sans);background:var(--ink);color:#fff;padding:2px 4px 1px;border-radius:3px;margin-left:6px;vertical-align:1px}
+.legend-bsc{display:inline-block;width:22px;height:7px;background:var(--ink);border-radius:4px;vertical-align:2px;margin-right:4px}
+
+/* steps */
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding:0 0 14px 44px;margin:0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;width:28px;height:28px;border-radius:50%;border:2px solid var(--c,var(--ink));font:800 14px/25px var(--sans);text-align:center;background:var(--panel)}
+.steps>li::after{content:"";position:absolute;left:14px;top:32px;bottom:2px;width:2px;background:var(--rule)}
+.steps>li:last-child::after{display:none}
+
+/* parlia slot strip */
+.slots{margin:16px 0 6px}
+.slots .row{display:grid;grid-template-columns:repeat(40,1fr);gap:2px}
+.slots .row span{height:30px;border-radius:2px;background:var(--c)}
+.slots .lab{display:grid;grid-template-columns:16fr 16fr 8fr;gap:2px;font-size:13px;color:var(--ink2);margin-top:6px}
+.slots .lab div{border-top:2px solid var(--ink2);padding-top:4px}
+.backoff{position:relative;height:74px;margin:22px 0 10px;border-bottom:2px solid var(--ink)}
+.backoff .tk{position:absolute;bottom:-7px;transform:translateX(-50%);text-align:center;font-size:13px;line-height:1.35}
+.backoff .tk::after{content:"";display:block;width:2px;height:12px;margin:4px auto 0;background:var(--ink)}
+.backoff .tk b{display:block;font:600 12px var(--mono)}
+.backoff .miss{color:var(--ink2);text-decoration:line-through}
+
+/* extra bytes */
+.bytes{display:flex;gap:3px;margin:14px 0 6px;font-size:13px;line-height:1.3}
+.bytes div{background:var(--panel);border:1.5px solid var(--ink);border-radius:3px;padding:8px 6px;min-width:46px}
+.bytes div.ep{border-style:dashed}
+.bytes div.att{border-color:var(--final);background:#FBEFF4}
+.bytes b{display:block;font-weight:700}
+.bytes i{font-style:normal;font:400 11.5px var(--mono);color:var(--ink2)}
+
+/* finality svg */
+.fin{width:100%;height:auto;max-width:760px;display:block;margin:10px 0 14px}
+.fin text{font-family:var(--sans)}
+
+/* lane bar */
+.gasbar{display:flex;height:44px;margin:16px 0 6px;border:1.5px solid var(--ink);border-radius:4px;overflow:hidden;font-size:13px;line-height:1.25}
+.gasbar div{display:flex;align-items:center;padding:0 10px}
+.gasbar .sys{flex:0 0 9%;background:var(--wash);border-right:1.5px solid var(--ink)}
+.gasbar .gen{flex:1;background:var(--panel)}
+.gasbar .lane{flex:0 0 18%;border-left:1.5px dashed var(--ink);background:repeating-linear-gradient(135deg,#D7EFEC 0 6px,#fff 6px 12px);color:#08584F;font-weight:700}
+.gasnote{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2)}
+
+/* storage */
+.store{display:flex;flex-direction:column;gap:0;margin:16px 0}
+.store .box{background:var(--panel);border:1.5px solid var(--ink);border-radius:4px;padding:12px 16px}
+.store .box b{font-size:16px}
+.store .box p{margin:4px 0 0;font-size:14px;color:var(--ink2)}
+.store .arrow{font-size:13px;color:var(--ink2);padding:6px 0 6px 22px;border-left:2px solid var(--ink);margin-left:24px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tags code{background:var(--wash)}
+
+/* forks */
+.forks td{vertical-align:baseline}
+.forks td:first-child{white-space:nowrap;font-family:var(--mono);font-size:12.5px;color:var(--ink2)}
+.forks td:nth-child(2){font-weight:700;white-space:nowrap}
+.speed{display:inline-block;font:700 12px/1 var(--sans);background:var(--produce);color:var(--ink);padding:4px 7px 3px;border-radius:999px;margin-right:6px}
+.forks tr.next td{background:#FBF3DC}
+.forks tr.next td:nth-child(2)::after{content:"主网待激活";font:700 11px/1 var(--sans);background:var(--ink);color:#fff;padding:3px 6px 2px;border-radius:999px;margin-left:8px;vertical-align:2px}
+
+footer{max-width:1440px;margin:0 auto;padding:0 32px 48px;font-size:13px;color:var(--ink2)}
+
+@media (max-width:1100px){
+  .map-grid{grid-template-columns:1fr}
+  .map-scroll{border-right:0;border-bottom:1px solid var(--rule)}
+  .detail{max-height:none}
+  .doc{grid-template-columns:1fr}
+  .toc{display:none}
+}
+@media (max-width:640px){
+  .top{padding:28px 18px 12px}.top h1{font-size:32px}
+  .map-wrap,.doc,footer{padding-left:18px;padding-right:18px}
+  .layer{grid-template-columns:1fr}
+  .bytes{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>BSC 节点源码线路图</h1>
+  <p class="lede">BSC 节点从收到交易、出块、投票到区块落盘的完整路径。每条线是一条数据流，站点是对应的包或函数，换乘站是几条流程共用的组件。点击站点可查看源码位置和原理。</p>
+  <p class="meta">基于 bnb-chain/bsc v1.8.2，commit <code>54afaff4d</code>（2026-11-03）。行号以该 commit 为准。</p>
+</header>
+
+<div class="map-wrap">
+  <div class="toolbar" role="group" aria-label="只看某一条线">
+    <span class="hint">只看：</span>
+    <button class="lbtn" data-line="all" aria-pressed="true">全部</button>
+    <button class="lbtn" data-line="tx" style="--c:var(--tx)" aria-pressed="false">交易线</button>
+    <button class="lbtn" data-line="produce" style="--c:var(--produce)" aria-pressed="false">出块线</button>
+    <button class="lbtn" data-line="mev" style="--c:var(--mev)" aria-pressed="false">MEV 线</button>
+    <button class="lbtn" data-line="final" style="--c:var(--final)" aria-pressed="false">投票线</button>
+    <button class="lbtn" data-line="import" style="--c:var(--import)" aria-pressed="false">导入线</button>
+  </div>
+  <div class="map-grid">
+    <div class="map-scroll"><svg id="map" viewBox="0 0 1240 700" role="img" aria-label="BSC 节点数据流线路图"></svg></div>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+</div>
+
+<div class="doc">
+  <nav class="toc" aria-label="章节">
+    <ol>
+      <li><a href="#layers">分层与代码量</a></li>
+      <li><a href="#startup">启动流程</a></li>
+      <li><a href="#parlia" style="--c:var(--produce)">Parlia 出块</a></li>
+      <li><a href="#extra" style="--c:var(--produce)">区块头 Extra</a></li>
+      <li><a href="#systx" style="--c:var(--produce)">系统交易</a></li>
+      <li><a href="#finality" style="--c:var(--final)">快速最终性</a></li>
+      <li><a href="#forkchoice" style="--c:var(--import)">导入与分叉选择</a></li>
+      <li><a href="#mev" style="--c:var(--mev)">MEV</a></li>
+      <li><a href="#lane" style="--c:var(--tx)">Payment Lane</a></li>
+      <li><a href="#network">网络与同步</a></li>
+      <li><a href="#storage" style="--c:var(--import)">存储</a></li>
+      <li><a href="#forks">硬分叉</a></li>
+      <li><a href="#addresses">地址速查</a></li>
+      <li><a href="#reading">阅读路线</a></li>
+    </ol>
+  </nav>
+
+<main>
+
+<!-- ============ LAYERS ============ -->
+<section id="layers">
+  <h2>分层与代码量</h2>
+  <p>BSC 是 go-ethereum 的分叉，目录结构基本沿用上游。BSC 自己的改动集中在共识（Parlia）、投票（core/vote）、出块（miner 中的 MEV 部分）、系统合约和 bsc 网络子协议。下面的条长按非测试 Go 代码行数绘制（单位：千行），所有层用同一比例尺；<span class="legend-bsc"></span>深色条、带 BSC 标记的是 BSC 新增或大幅改写的包。</p>
+  <div class="layers" id="layerRows"></div>
+</section>
+
+<!-- ============ STARTUP ============ -->
+<section id="startup">
+  <h2>启动流程</h2>
+  <p>启动 <code>geth</code> 后，以下步骤依次执行。读源码时按这个顺序走一遍 <code>eth.New</code>，就能知道所有核心对象从哪里创建、彼此如何引用。</p>
+  <ol class="steps">
+    <li><code>main()</code> → <code>geth()</code>：<code>prepare</code> → <code>makeFullNode</code> → <code>startNode</code> → <code>stack.Wait()</code><br><span class="ref">cmd/geth/main.go:361</span></li>
+    <li><code>makeFullNode</code>：<code>node.New</code> 创建节点容器，应用 <code>--override.*</code> 分叉参数，然后 <code>RegisterEthService</code> 调用 <code>eth.New</code><br><span class="ref">cmd/geth/config.go:259，cmd/utils/flags.go:2554</span></li>
+    <li><code>eth.New</code> 依次创建：chainDb（含 freezer）→ Parlia 引擎 → <code>BlockChain</code> → 日志索引 FilterMaps → TxPool（legacypool + blobpool）→ 网络 <code>handler</code> → <code>dropper</code> → <code>miner</code> → <code>VotePool</code>（同时注入 Parlia 和 handler）→ 可选的恶意投票监控 → <code>VoteManager</code>（仅 <code>Miner.VoteEnable</code>）→ gas 价格预言机；最后注册 API、P2P 协议和生命周期，可选启动 MEV gRPC<br><span class="ref">eth/backend.go:163–554</span></li>
+    <li><code>Node.Start</code>：启动 P2P server 和 RPC 端点，再调用每个 lifecycle 的 <code>Start()</code><br><span class="ref">node/node.go:200–311</span></li>
+    <li><code>Ethereum.Start</code>：节点发现（DNS 列表 + discv4 + discv5 混合）→ <code>handler.Start</code> → <code>dropper.Start</code> → <code>filterMaps.Start</code><br><span class="ref">eth/backend.go:892，:981</span></li>
+    <li><code>handler.Start</code> 启动后台循环：交易广播、投票广播、新块广播、区块范围更新、<code>chainSync.loop</code>（含 fetcher）、节点标记 <code>protoTracker</code>、恶意投票监控<br><span class="ref">eth/handler.go:689</span></li>
+    <li>带 <code>--mine</code> 时调用 <code>StartMining</code>，worker 开始工作；Maxwell 之后还会把配置的 EVN 节点 ID 写入 StakeHub 合约<br><span class="ref">cmd/geth/main.go:426，eth/backend.go:650</span></li>
+  </ol>
+</section>
+
+<!-- ============ PARLIA ============ -->
+<section id="parlia" style="--c:var(--produce)">
+  <h2>Parlia 出块</h2>
+  <p>Parlia 是权益权威证明（PoSA）：一小组验证者按固定顺序轮流出块，验证者集合由链上质押合约选出，每个 epoch 更新一次。共识引擎在 <code>consensus/parlia</code>，接口实现见 <code>Prepare</code> / <code>FinalizeAndAssemble</code> / <code>Seal</code> / <code>VerifyHeader</code>。</p>
+
+  <h3>轮到谁出块</h3>
+  <p>验证者按地址排序。区块 <code>N</code> 的正当值（in-turn）验证者是 <code>validators[(N+1) / TurnLength % len]</code>，每人连续出 <code>TurnLength</code> 个块。正当值块难度为 2，其他验证者补出的块难度为 1。<span class="ref">snapshot.go:466，parlia.go:93</span></p>
+  <div class="slots" aria-label="TurnLength 为 16 时的出块轮次示意">
+    <div class="row" id="slotRow"></div>
+    <div class="lab"><div>验证者 A 连续 16 块（450ms × 16 = 7.2 秒）</div><div>验证者 B 连续 16 块</div><div>验证者 C …</div></div>
+  </div>
+  <p class="note">TurnLength 从 Bohr 开始由 ValidatorContract 的 <code>getTurnLength()</code> 决定，写在 epoch 块的 Extra 里。代码注释列出的典型值：默认 1 或 4，Lorentz 为 8，Maxwell 为 16。</p>
+
+  <h3>正当值验证者缺席时：backoff</h3>
+  <p>出块时间戳 = 父块毫秒时间 + <code>BlockInterval</code> + <code>backOffTime</code>。正当值验证者的 backoff 为 0；其余验证者（排除最近签过块的、Bohr 起也排除正当值本人）用 <code>N / TurnLength</code> 作种子随机排序，第 k 个等待 <code>初始延迟 + k × 1000ms</code>。Lorentz 后初始延迟为 2000ms。<span class="ref">parlia.go:2351，ramanujanfork.go:31</span></p>
+  <div class="backoff" aria-label="backoff 示意">
+    <div class="tk" style="left:6%"><span class="miss">正当值</span><b>+0ms</b></div>
+    <div class="tk" style="left:40%">备选 1<b>+2000ms</b></div>
+    <div class="tk" style="left:62%">备选 2<b>+3000ms</b></div>
+    <div class="tk" style="left:84%">备选 3<b>+4000ms</b></div>
+  </div>
+  <p>“最近签过”的定义：在最近 <code>(N/2+1) × TurnLength − 1</code> 个块里已经出过 TurnLength 个块的验证者不能再出块（<code>SignRecently</code>，<span class="ref">snapshot.go:243</span>）。这保证任意时刻至少要有过半验证者参与才能延续链。</p>
+
+  <h3>出块间隔和 epoch 的演进</h3>
+  <p>这些值硬编码在 <span class="ref">consensus/parlia/parlia.go:58–65</span>，由 <code>snapshot.apply</code> 在对应分叉后切换（<code>ParliaConfig</code> 是空结构体）。</p>
+  <table>
+    <thead><tr><th>分叉</th><th>出块间隔</th><th>Epoch 长度</th><th>其他</th></tr></thead>
+    <tbody>
+      <tr><td>初始</td><td>3000ms</td><td>200 块</td><td>backoff 初始 1000ms</td></tr>
+      <tr><td>Lorentz（2025-04-29）</td><td>1500ms</td><td>500 块</td><td>毫秒时间戳写入 MixDigest，backoff 初始 2000ms</td></tr>
+      <tr><td>Maxwell（2025-06-30）</td><td>750ms</td><td>1000 块</td><td>BEP-524：Recents 中已最终确认的记录被清除</td></tr>
+      <tr><td>Fermi（2026-01-14）</td><td>450ms</td><td>1000 块</td><td>投票目标可以是最多 3 代以内的祖先块</td></tr>
+    </tbody>
+  </table>
+
+  <h3>验证者集合轮换</h3>
+  <p>每 epoch 的第一个块（epoch 块）在 Extra 里写入下一组验证者及其 BLS 公钥，来源是 <code>ValidatorContract.getMiningValidators()</code>。新集合不是在 epoch 块立即生效，而是延迟到 <code>number % epochLength == minerHistoryCheckLen()</code> 时才切换，给网络留出确认时间。<span class="ref">snapshot.go:374，parlia.go:1960</span></p>
+  <p>Snapshot 是 Parlia 的核心状态：当前验证者、最近签名者 <code>Recents</code>、<code>TurnLength</code>、<code>BlockInterval</code>、<code>EpochLength</code>，以及最近一次投票证明 <code>Attestation</code>。内存 LRU 缓存 1280 个，每 1024 块以 JSON 存入数据库（key 为 <code>parlia-</code> + 哈希）。<span class="ref">snapshot.go:40–148</span></p>
+</section>
+
+<!-- ============ EXTRA ============ -->
+<section id="extra" style="--c:var(--produce)">
+  <h2>区块头 Extra</h2>
+  <p>Parlia 把共识数据都塞进 <code>header.Extra</code>。虚线框只在 epoch 块出现；粉色框是 Luban 之后的投票证明，可能为空。</p>
+  <div class="bytes" aria-label="Extra 字节布局">
+    <div style="flex:28"><b>Vanity</b><i>28B</i></div>
+    <div style="flex:6"><b>ForkHash</b><i>4B</i></div>
+    <div class="ep" style="flex:4"><b>N</b><i>1B</i></div>
+    <div class="ep" style="flex:40"><b>验证者 × N</b><i>20B 地址 + 48B BLS 公钥</i></div>
+    <div class="ep" style="flex:5"><b>Turn</b><i>1B</i></div>
+    <div class="att" style="flex:26"><b>投票证明</b><i>RLP VoteAttestation</i></div>
+    <div style="flex:20"><b>签名</b><i>65B secp256k1</i></div>
+  </div>
+  <ul>
+    <li>签名哈希 <code>SealHash</code> 只覆盖 Extra 的前 32 字节，所以投票证明可以在签名前最后一刻插入。<span class="ref">parlia.go:1909，:1161</span></li>
+    <li>解析函数：<code>getValidatorBytesFromHeader</code>、<code>getVoteAttestationFromHeader</code>、<code>parseTurnLength</code>。<span class="ref">parlia.go:386–445，snapshot.go:564</span></li>
+    <li>Lorentz 起，时间戳的毫秒部分存放在 <code>MixDigest</code>，用 <code>header.MilliTimestamp()</code> 读取。<span class="ref">core/types/block.go:167</span></li>
+    <li>Prague 起，MEV 来源（本地 / bid / bid block）和 builder 地址编码在 <code>RequestsHash</code> 中。<span class="ref">core/types/builder/block_mev_info.go</span></li>
+  </ul>
+</section>
+
+<!-- ============ SYSTX ============ -->
+<section id="systx" style="--c:var(--produce)">
+  <h2>系统交易</h2>
+  <p>每个块的末尾都有几笔由验证者自己发出的系统交易：发往系统合约、gas 价格为 0、发送者等于 coinbase。出块时 <code>FinalizeAndAssemble</code> 生成并签名它们；导入时 <code>StateProcessor</code> 先把它们挑出来不执行，交给 <code>Parlia.Finalize</code> 重算一遍并逐笔比对哈希。普通交易出现在系统交易之后会被判为非法（Cancun 起）。<span class="ref">parlia.go:323，:1433；core/state_processor.go:136</span></p>
+  <p>Finalize 的执行顺序：</p>
+  <ol class="steps">
+    <li>按硬分叉升级系统合约字节码（<code>TryUpdateBuildInSystemContract</code>，Feynman 后在 Finalize 内执行）<br><span class="ref">core/systemcontracts/upgrade.go:1147</span></li>
+    <li>特殊块的初始化：区块 1 调用各合约 <code>init()</code>；Feynman 块初始化 StakeHub、Governor 等<br><span class="ref">parlia.go:2075，feynmanfork.go:33</span></li>
+    <li>如果本块不是正当值出的，且正当值验证者最近没签过：调用 <code>SlashContract.slash</code> 记录缺席<br><span class="ref">parlia.go:1471</span></li>
+    <li>分配手续费：所有手续费先进入 <code>SystemAddress</code>，再通过 <code>ValidatorContract.deposit</code> 给出块验证者（Kepler 之前另有 1/16 给 SystemReward 合约）<br><span class="ref">parlia.go:2022</span></li>
+    <li>每 200 块：<code>distributeFinalityReward</code>，按最近 200 个投票证明里的投票次数分配最终性奖励<br><span class="ref">parlia.go:1317</span></li>
+    <li>每个 UTC 日的第一个块（breathe block）：<code>updateValidatorSetV2</code>，按 <code>StakeHub</code> 的质押排名选出新验证者集合<br><span class="ref">feynmanfork.go:99</span></li>
+  </ol>
+  <p class="note">为保证系统交易一定能执行，worker 打包时预留 gas：普通块 1M，breathe 块 20M（<span class="ref">parlia.go:1393</span>）。BSC 的 base fee 固定为 0，手续费不燃烧（<span class="ref">consensus/misc/eip1559/eip1559.go:63</span>）。</p>
+</section>
+
+<!-- ============ FINALITY ============ -->
+<section id="finality" style="--c:var(--final)">
+  <h2>快速最终性</h2>
+  <p>BEP-126 在 PoSA 之上加了一层 BLS 投票：验证者对每个新块投票，票数达到 ⌈2N/3⌉ 后由下一个出块者聚合进区块头。连续两个块都拿到足够票数时，前一个块就被最终确认（finalized），不会再被回滚。</p>
+  <svg class="fin" viewBox="0 0 760 230" aria-label="justified 与 finalized 推进示意">
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#17212B"/></marker>
+    <marker id="ahf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#C22D67"/></marker></defs>
+    <g font-size="15" font-weight="800" text-anchor="middle">
+      <rect x="110" y="70" width="130" height="46" rx="4" fill="#fff" stroke="#17212B" stroke-width="1.5"/><text x="175" y="99">#98</text>
+      <rect x="270" y="70" width="130" height="46" rx="4" fill="#fff" stroke="#17212B" stroke-width="1.5"/><text x="335" y="99">#99</text>
+      <rect x="430" y="70" width="130" height="46" rx="4" fill="#fff" stroke="#17212B" stroke-width="1.5"/><text x="495" y="99">#100</text>
+      <rect x="590" y="70" width="130" height="46" rx="4" fill="#FBEFF4" stroke="#C22D67" stroke-width="2"/><text x="655" y="99">#101</text>
+    </g>
+    <g stroke="#17212B" stroke-width="1.5" marker-end="url(#ah)"><line x1="268" y1="93" x2="244" y2="93"/><line x1="428" y1="93" x2="404" y2="93"/><line x1="588" y1="93" x2="564" y2="93"/></g>
+    <path d="M655 66 C655 26 495 26 495 64" fill="none" stroke="#C22D67" stroke-width="2" marker-end="url(#ahf)"/>
+    <text x="575" y="22" text-anchor="middle" font-size="13" fill="#17212B">#101 的 Extra 携带投票证明：source = #99，target = #100</text>
+    <g font-size="13" fill="#55616B"><text x="0" y="160">处理 #101 前</text><text x="0" y="205">处理 #101 后</text></g>
+    <g font-size="12" font-weight="700" text-anchor="middle">
+      <rect x="130" y="144" width="90" height="24" rx="12" fill="#C22D67"/><text x="175" y="161" fill="#fff">finalized</text>
+      <rect x="290" y="144" width="90" height="24" rx="12" fill="#fff" stroke="#C22D67" stroke-width="2"/><text x="335" y="161" fill="#C22D67">justified</text>
+      <rect x="290" y="189" width="90" height="24" rx="12" fill="#C22D67"/><text x="335" y="206" fill="#fff">finalized</text>
+      <rect x="450" y="189" width="90" height="24" rx="12" fill="#fff" stroke="#C22D67" stroke-width="2"/><text x="495" y="206" fill="#C22D67">justified</text>
+    </g>
+  </svg>
+  <ol class="steps">
+    <li>新区块头验证通过后，<code>VoteManager</code> 收到 <code>HighestVerifiedHeaderEvent</code>。同步中或刚开始挖矿的 40 个块内不投票<br><span class="ref">core/vote/vote_manager.go:97</span></li>
+    <li>检查三条规则：同一高度只投一票；256 块内不出现包围投票（新票的 source–target 区间包住旧票，或反过来）；只投规范链头<br><span class="ref">vote_manager.go:255</span></li>
+    <li>用 BLS 密钥签名 <code>VoteData{source, target}</code>，先写投票日志再进投票池，并通过 bsc 协议的 <code>Votes</code> 消息广播<br><span class="ref">vote_signer.go:32，vote_journal.go，eth/handler.go:969</span></li>
+    <li>下一个出块者在 <code>Seal</code> 时从 VotePool 取票，凑够 ⌈2N/3⌉ 后聚合签名，连同投票者位图写进 Extra<br><span class="ref">parlia.go:1073</span></li>
+    <li>其他节点导入时验证聚合签名，并在 Snapshot 里更新：target 成为 justified；如果 source + 1 == target，source 成为 finalized<br><span class="ref">parlia.go:472，snapshot.go:199</span></li>
+  </ol>
+  <p>RPC 可查询：<code>parlia_getJustifiedNumber</code>、<code>parlia_getFinalizedNumber</code>。如果投票池里已经有子块的足够票数，<code>GetFinalizedHeader</code> 会提前给出更新的 finalized 块。<span class="ref">parlia.go:2286，api.go:78</span></p>
+  <p class="note">违规投票的监控（<code>--monitor.maliciousvote</code>）和双签监控（<code>--monitor.doublesign</code>）目前只记日志，节点代码不会自动提交证据；链上通过预编译 0x68 验证双签证据。<span class="ref">core/monitor/</span></p>
+</section>
+
+<!-- ============ FORKCHOICE ============ -->
+<section id="forkchoice" style="--c:var(--import)">
+  <h2>导入与分叉选择</h2>
+  <p>所有节点（不论是否是验证者）都走导入线。入口是 <code>BlockChain.InsertChain</code>，大部分检查都并行进行：签名者恢复、区块头校验、区块体的几项检查、状态预取都在各自的 goroutine 中。<span class="ref">core/blockchain.go:2217–2826</span></p>
+  <ol class="steps">
+    <li>并行恢复交易发送者；BSC 上先做 blob 数据可用性检查（sidecar 数量、版本哈希、KZG 证明）</li>
+    <li><code>engine.VerifyHeaders</code> 并发校验 Parlia 规则，<code>ValidateBody</code> 校验交易根和 blob gas</li>
+    <li><code>ProcessBlock</code>：预取器先在临时状态上跑一遍交易加热缓存；<code>StateProcessor.Process</code> 执行普通交易，系统交易交给 <code>Parlia.Finalize</code>，最后检查 Payment Lane</li>
+    <li><code>ValidateState</code> 并行校验 bloom、收据根和状态根</li>
+    <li><code>writeBlockAndSetHead</code>：先做分叉选择，再写入区块、收据、sidecar 和状态，必要时 reorg</li>
+  </ol>
+  <h3>分叉选择规则</h3>
+  <p>BSC 用 justified 高度优先的分叉选择（<code>ReorgNeededWithFastFinality</code>，<span class="ref">core/forkchoice.go:129</span>）。比较两条链的链头时：</p>
+  <ol>
+    <li>justified 块高度更高的链胜出（Plato 之后）。</li>
+    <li>相同时比较总难度 TD。因为正当值块难度为 2、补出块为 1，TD 高意味着正当值块更多。</li>
+    <li>TD 也相同时：高度更低者胜；高度相同则时间戳更早者胜；仍相同且是同一出块者（双签），哈希更小者胜，否则随机。</li>
+  </ol>
+  <p class="note">校验模式 <code>--tries-verify-mode</code>：<code>local</code> 完整校验状态根；<code>none</code> 等模式不维护 trie（<code>NoTries</code>），跳过部分检查以换取性能。<span class="ref">core/verify_mode.go</span></p>
+</section>
+
+<!-- ============ MEV ============ -->
+<section id="mev" style="--c:var(--mev)">
+  <h2>MEV</h2>
+  <p>BSC 的 MEV 是“验证者 + 外部 builder”模式：builder 在节点外组装交易，提交给当期验证者；验证者把它和本地打包的块比较，选收益最高的签名出块。代码中有两种提交方式，并存运行。本仓库没有 bundle 池，也没有 <code>eth_sendBundle</code>。</p>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th></th><th>Bid（BEP-322）</th><th>Bid Block（BEP-675）</th></tr></thead>
+    <tbody>
+      <tr><td>提交内容</td><td>一组交易 + 报价</td><td>完整区块：头、交易、sidecar，末尾附未签名的系统交易</td></tr>
+      <tr><td>接口</td><td><code>mev_sendBid</code></td><td><code>mev_sendBidBlock</code> 或 gRPC <code>SendBidBlock</code>（端口 8552）</td></tr>
+      <tr><td>验证者是否执行</td><td>是：<code>simBid</code> 完整模拟，可用本地交易补满（GreedyMergeTx）</td><td>签名前不执行，只做头部、TxHash、系统交易形状和存款金额的轻量检查</td></tr>
+      <tr><td>择优标准</td><td>实际奖励最高</td><td>GasFee 最高，且区块奖励和验证者奖励都要胜过最佳 bid，手续费高于本地块</td></tr>
+      <tr><td>出错处理</td><td>模拟失败即丢弃</td><td>先广播、后用 <code>InsertChain</code> 校验；失败则吊销 builder 24 小时，多数验证者举报也会吊销</td></tr>
+      <tr><td>生效条件</td><td><code>Mev.Enabled</code></td><td>另需 <code>Mev.BidBlockEnabled</code> 且已过 Pasteur（2026-08-25）</td></tr>
+    </tbody>
+  </table></div>
+  <h3>时间线</h3>
+  <p>一切都在一个出块间隔（450ms）内完成。bid 必须在 <code>bidBetterBefore = 父块时间 + 间隔 − DelayLeftOver − BidSimulationLeftOver</code> 前到达（默认留 15ms + 20ms）。更好的 bid 会打断正在进行的模拟，但剩余时间少于 <code>NoInterruptLeftOver</code>（约 135ms）时不再打断。<span class="ref">common/bidutil/bidutil.go:11，miner/bid_simulator.go:436</span></p>
+  <p>相关代码：<span class="ref">miner/miner_mev.go，miner/bid_simulator.go，miner/bid_block*.go，consensus/parlia/bid_block.go，internal/ethapi/api_mev.go，core/types/builder/</span></p>
+</section>
+
+<!-- ============ LANE ============ -->
+<section id="lane" style="--c:var(--tx)">
+  <h2>Payment Lane</h2>
+  <p>BEP-703，随 Jenner 硬分叉启用（Chapel 测试网 2026-10-29 已激活，主网 2026-12-08）。每个块为“支付类”交易（主要是普通转账）保留一段 gas 配额。这段配额只能给支付交易用，用不完就空着，普通交易不能占用。所以即使合约交易拥堵，转账也总有空间。<span class="ref">core/paymentlane/paymentlane.go</span></p>
+  <div class="gasbar" aria-label="区块 gas 划分示意">
+    <div class="sys">系统交易预留</div>
+    <div class="gen">普通交易与支付交易都可使用</div>
+    <div class="lane">支付配额</div>
+  </div>
+  <div class="gasnote"><span>0</span><span>配额 = ratio × GasLimit / 10000，ratio 介于 1 到 1000（即最多 10%）</span><span>GasLimit</span></div>
+  <p style="margin-top:14px">每个节点在导入时检查：<code>GasUsed + max(0, 配额 − 支付交易已用 gas) ≤ GasLimit</code>。配额不写入区块，各节点从父状态里的 PaymentLane 合约（<code>0x…2007</code>）读取 ratio 和名单后各自计算。</p>
+  <h3>交易如何分类</h3>
+  <p>按以下顺序判断，命中即停止（<span class="ref">core/paymentlane/classify.go:35</span>）：</p>
+  <ol>
+    <li>系统交易、创建合约的交易、blob 交易和 7702 交易：普通。</li>
+    <li><code>to</code> 在 PaymentLane 合约登记的名单里：支付。</li>
+    <li>转账金额为 0：普通。</li>
+    <li><code>to</code> 是合约（有代码）：普通。</li>
+    <li>其余情况（向外部账户转账）：支付。</li>
+  </ol>
+  <p>worker 打包顺序不变；只是普通交易如果会挤占剩余配额就跳过，同一发送者后续交易也一并跳过。<span class="ref">miner/worker.go:965</span></p>
+</section>
+
+<!-- ============ NETWORK ============ -->
+<section id="network">
+  <h2>网络与同步</h2>
+  <p>P2P 层沿用 go-ethereum（discv4/discv5 发现、RLPx 加密传输、DNS 节点列表），默认端口 30303、最多 50 个连接。上面跑三个子协议：</p>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>协议</th><th>版本</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td><code>eth</code></td><td>68、70</td><td>区块和交易的广播与请求。BSC 的 eth/70 握手仍保留 TD，用于 Parlia 链同步；NewBlock 和 BlockBody 中可选携带 blob sidecar</td></tr>
+      <tr><td><code>snap</code></td><td>1</td><td>快照同步：按范围拉取账户、存储、字节码和 trie 节点</td></tr>
+      <tr><td><code>bsc</code></td><td>1、2</td><td>BSC 专有：<code>Votes</code> 投票广播；bsc/2 新增 <code>GetBlocksByRange</code>，一次最多取 64 块</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">节点第一次启动时怎么找到别的节点、怎么建立连接，见单独的分步流程图：<a href="bsc-p2p-discovery.html">BSC 节点是怎么找到彼此的</a>。</p>
+  <h3>广播策略</h3>
+  <ul>
+    <li><b>区块</b>：完整块发给 √N 个节点（<code>DirectBroadcast</code> 时发给全部），另外必发所有代理节点和 EVN 节点；其他节点只收哈希公告。<span class="ref">eth/handler.go:774</span></li>
+    <li><b>交易</b>：只发给非 EVN 节点。小于 4096 字节的非 blob 交易整包发送，其余只发哈希。<span class="ref">eth/handler.go:911</span></li>
+    <li><b>投票</b>：逐张发送给代理节点、EVN 节点和 TD 相近的节点；接收端每节点限速 68 票/秒。<span class="ref">eth/handler.go:969</span></li>
+  </ul>
+  <h3>EVN（验证者增强网络）</h3>
+  <p>验证者和它的哨兵节点之间组成一张高速网。Maxwell 后验证者把自己的节点 ID 登记在 StakeHub 合约里；本节点每 10 秒对照链上名单和白名单，把匹配的连接标记为 EVN。EVN 和代理节点被视为受信任节点，不受连接数和单 IP 限制。<span class="ref">eth/handler.go:390，:888；p2p/peer.go:647</span></p>
+  <h3>同步</h3>
+  <p><code>chainSyncer</code> 至少要有 5 个节点（10 秒后降为 1 个），选 TD 最高的节点同步。领先不超过 2 TD 时只等待 2 秒再检查（BSC 特有，避免出块间隔太短时频繁触发同步）。落后较多时 downloader 做 full 或 snap 同步，headers、bodies、receipts 并发下载；追上后由 fetcher 逐块导入。<span class="ref">eth/sync.go:148–249，eth/downloader/downloader.go:651</span></p>
+  <h3>RPC 命名空间</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>命名空间</th><th>注册位置</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>eth</code> <code>txpool</code> <code>debug</code> <code>mev</code></td><td><span class="ref">internal/ethapi/backend.go:138</span></td><td>标准接口；<code>mev_*</code> 是 BSC 新增</td></tr>
+      <tr><td><code>parlia</code> <code>miner</code> <code>admin</code> <code>net</code></td><td><span class="ref">eth/backend.go:593</span></td><td><code>parlia_getValidators</code>、<code>parlia_getFinalizedNumber</code> 等；<code>miner_startMev</code></td></tr>
+      <tr><td><code>web3</code> <code>admin</code> <code>debug</code></td><td><span class="ref">node/api.go:36</span></td><td>节点级接口</td></tr>
+      <tr><td><code>engine</code></td><td><span class="ref">eth/catalyst/api.go:55</span></td><td>认证端口 8551</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">IPC 暴露全部接口；HTTP（8545）和 WS（8546）默认只开 <code>net</code> 和 <code>web3</code>，其余要用 <code>--http.api</code> 显式开启。</p>
+</section>
+
+<!-- ============ STORAGE ============ -->
+<section id="storage" style="--c:var(--import)">
+  <h2>存储</h2>
+  <p>只有一个 <code>chaindata</code> 数据库（默认 Pebble，也支持 LevelDB），按数据冷热分三级：</p>
+  <div class="store">
+    <div class="box"><b>内存：pathdb diff layers</b><p>最近 128 个块的状态变更各占一层，第 129 层是磁盘层；写缓冲默认 64MB。退出时写入 <code>merkle.journal</code>，重启时恢复。<span class="ref">triedb/pathdb/</span></p></div>
+    <div class="arrow">写缓冲满了就刷盘</div>
+    <div class="box"><b>键值库：近期数据</b><p>最近约 60 万块的区块、收据、blob sidecar，pathdb 磁盘层，状态快照，Parlia snapshot，交易索引。</p></div>
+    <div class="arrow">超过 60 万块后冻结迁出，每批最多 3 万块</div>
+    <div class="box"><b>Freezer（ancient）：不可变的历史</b><p>按表追加写入的平面文件。BSC 不以 finalized 块作为冻结依据，以便保留双签块。<span class="ref">core/rawdb/chain_freezer.go:180</span></p>
+      <div class="tags"><code>headers</code><code>hashes</code><code>bodies</code><code>receipts</code><code>diffs</code><code>blobs</code></div></div>
+  </div>
+  <table>
+    <thead><tr><th>数据</th><th>默认保留</th><th>参数</th></tr></thead>
+    <tbody>
+      <tr><td>历史状态（pathdb）</td><td>600,000 块</td><td>状态历史</td></tr>
+      <tr><td>交易索引</td><td>2,350,000 块</td><td><code>--history.transactions</code></td></tr>
+      <tr><td>日志索引</td><td>576,000 块</td><td><code>--history.logs</code></td></tr>
+      <tr><td>Blob sidecar</td><td>18.2 天 + 1 天余量</td><td><code>--blob.extra-reserve</code>（0 表示永不裁剪）</td></tr>
+      <tr><td>历史区块</td><td>全部</td><td><code>--history.blocks</code> 可在线裁剪</td></tr>
+    </tbody>
+  </table>
+  <p class="note">状态方案默认 path；已有数据库沿用其原方案，与参数冲突时报错。离线裁剪命令：<code>geth snapshot prune-state</code>、<code>geth prune-history</code>。<span class="ref">core/rawdb/accessors_trie.go:297</span></p>
+</section>
+
+<!-- ============ FORKS ============ -->
+<section id="forks">
+  <h2>硬分叉</h2>
+  <p>BSC 在以太坊分叉之外有自己的一串硬分叉，定义在 <span class="ref">params/config.go:214</span>，判断函数形如 <code>IsLorentz()</code>。早期按区块高度激活，Kepler 起按时间戳。读代码时遇到 <code>if IsXxx</code> 分支，可在这里查对应的含义。</p>
+  <div class="tbl-scroll"><table class="forks">
+    <thead><tr><th>主网激活</th><th>分叉</th><th>代码中的主要变化</th></tr></thead>
+    <tbody>
+      <tr><td>#0</td><td>Ramanujan、Niels</td><td>基于 backoff 的出块时间</td></tr>
+      <tr><td>#5,184,000</td><td>MirrorSync</td><td>系统合约升级</td></tr>
+      <tr><td>#13,082,000</td><td>Bruno</td><td>系统合约升级</td></tr>
+      <tr><td>#18,907,621</td><td>Euler</td><td>改用 <code>getMiningValidators</code> 获取验证者</td></tr>
+      <tr><td>#21,962,149</td><td>Nano</td><td>账户黑名单，调整预编译</td></tr>
+      <tr><td>#22,107,423</td><td>Moran</td><td>调整预编译</td></tr>
+      <tr><td>#23,846,001</td><td>Gibbs</td><td>系统合约升级</td></tr>
+      <tr><td>#27,281,024</td><td>Planck</td><td>backoff 排除最近签过块的验证者</td></tr>
+      <tr><td>#29,020,050</td><td>Luban</td><td>快速最终性第一阶段：Extra 带 BLS 公钥和投票证明</td></tr>
+      <tr><td>#30,720,096</td><td>Plato</td><td>快速最终性第二阶段：投票证明错误即拒块，最终性奖励，justified 分叉选择</td></tr>
+      <tr><td>#31,302,048</td><td>Hertz</td><td>引入 Berlin、London</td></tr>
+      <tr><td>2024-01-23</td><td>Kepler</td><td>与 Shanghai 同时；取消 SystemReward 分成</td></tr>
+      <tr><td>2024-04-18</td><td>Feynman</td><td>StakeHub 质押体系，每日更新验证者集合，合约升级移入 Finalize</td></tr>
+      <tr><td>2024-06-20</td><td>Haber</td><td>与 Cancun 同时；blob 交易，调整预编译</td></tr>
+      <tr><td>2024-09-26</td><td>Bohr</td><td>TurnLength 连续出块，BEP-404</td></tr>
+      <tr><td>2025-03-20</td><td>Pascal</td><td>与 Prague 同时</td></tr>
+      <tr><td>2025-04-29</td><td>Lorentz</td><td><span class="speed">1.5s</span>epoch 500，毫秒时间戳</td></tr>
+      <tr><td>2025-06-30</td><td>Maxwell</td><td><span class="speed">0.75s</span>epoch 1000，BEP-524，EVN 节点 ID 上链</td></tr>
+      <tr><td>2026-01-14</td><td>Fermi</td><td><span class="speed">0.45s</span>投票目标可为 3 代内祖先</td></tr>
+      <tr><td>2026-04-28</td><td>Mendel</td><td>与 Osaka 同时；BEP-657 仅块号为 5 的倍数时可含 blob</td></tr>
+      <tr><td>2026-08-25</td><td>Pasteur</td><td>启用 Bid Block，轻客户端类预编译废弃，StakeHub/Governor 升级</td></tr>
+      <tr class="next"><td>2026-12-08</td><td>Jenner</td><td>Payment Lane（BEP-703），CAS20 预编译（BEP-702），毫秒时间戳预编译 0x70（BEP-706）。Chapel 已于 2026-10-29 激活</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ ADDRESSES ============ -->
+<section id="addresses">
+  <h2>地址速查</h2>
+  <h3>系统合约</h3>
+  <p class="note">定义在 <span class="ref">core/systemcontracts/const.go:5</span>，各分叉的字节码在同目录的子文件夹（mainnet / chapel / rialto）里。</p>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>合约</th><th>地址</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td>ValidatorContract</td><td><code>0x…1000</code></td><td>验证者集合、手续费分配、TurnLength</td></tr>
+      <tr><td>SlashContract</td><td><code>0x…1001</code></td><td>缺席惩罚</td></tr>
+      <tr><td>SystemReward</td><td><code>0x…1002</code></td><td>系统奖励池</td></tr>
+      <tr><td>LightClient</td><td><code>0x…1003</code></td><td>跨链轻客户端（历史）</td></tr>
+      <tr><td>TokenHub</td><td><code>0x0000000000000000000000000000000000001004</code></td><td>跨链资产（历史）</td></tr>
+      <tr><td>RelayerIncentivize</td><td><code>0x…1005</code></td><td>中继激励（历史）</td></tr>
+      <tr><td>RelayerHub</td><td><code>0x…1006</code></td><td>中继者管理（历史）</td></tr>
+      <tr><td>GovHub</td><td><code>0x…1007</code></td><td>参数治理</td></tr>
+      <tr><td>TokenManager</td><td><code>0x0000000000000000000000000000000000001008</code></td><td>跨链资产（历史）</td></tr>
+      <tr><td>CrossChain</td><td><code>0x…2000</code></td><td>跨链（历史）</td></tr>
+      <tr><td>Staking</td><td><code>0x…2001</code></td><td>旧质押</td></tr>
+      <tr><td>StakeHub</td><td><code>0x…2002</code></td><td>质押、验证者选举、EVN 节点 ID</td></tr>
+      <tr><td>StakeCredit</td><td><code>0x…2003</code></td><td>质押凭证</td></tr>
+      <tr><td>Governor</td><td><code>0x…2004</code></td><td>链上治理</td></tr>
+      <tr><td>GovToken</td><td><code>0x0000000000000000000000000000000000002005</code></td><td>治理代币</td></tr>
+      <tr><td>Timelock</td><td><code>0x…2006</code></td><td>治理延时</td></tr>
+      <tr><td>PaymentLane</td><td><code>0x…2007</code></td><td>Payment Lane 比例和名单（Jenner）</td></tr>
+      <tr><td>TokenRecoverPortal</td><td><code>0x0000000000000000000000000000000000003000</code></td><td>资产找回</td></tr>
+    </tbody>
+  </table></div>
+  <h3>BSC 预编译合约</h3>
+  <p class="note">按分叉选择预编译集合：<span class="ref">core/vm/contracts.go:563 activePrecompiledContracts</span>。</p>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>地址</th><th>功能</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><code>0x64</code></td><td>Tendermint 区块头验证</td><td>Pasteur 起废弃</td></tr>
+      <tr><td><code>0x65</code></td><td>IAVL Merkle 证明验证</td><td>Pasteur 起废弃</td></tr>
+      <tr><td><code>0x66</code></td><td>BLS 签名验证</td><td>Luban 起</td></tr>
+      <tr><td><code>0x67</code></td><td>CometBFT 轻区块验证</td><td>Luban 起，多次升级</td></tr>
+      <tr><td><code>0x68</code></td><td>双签证据验证</td><td>Feynman 起；Jenner 按字节计费</td></tr>
+      <tr><td><code>0x69</code></td><td>secp256k1 签名恢复</td><td>Feynman 起</td></tr>
+      <tr><td><code>0x70</code></td><td>毫秒时间戳</td><td>Jenner 新增</td></tr>
+      <tr><td><code>0x100</code></td><td>P-256 签名验证</td><td>Haber 起</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ READING ============ -->
+<section id="reading">
+  <h2>阅读路线</h2>
+  <p>第一次读代码，建议按下面的顺序：先搞清对象从哪来，再沿导入线走一遍（所有节点都会执行），最后看验证者独有的出块、投票和 MEV。</p>
+  <ol class="steps">
+    <li><code>eth/backend.go</code> 的 <code>New()</code>：所有核心对象的创建顺序与依赖关系</li>
+    <li><code>consensus/parlia/snapshot.go</code>：理解验证者集合、轮次和最终性状态，后面所有逻辑都依赖它</li>
+    <li><code>core/blockchain.go</code> 的 <code>insertChain</code> 和 <code>ProcessBlock</code>：导入主干</li>
+    <li><code>core/state_processor.go</code> 和 <code>parlia.go</code> 的 <code>Finalize</code>：系统交易如何被分离与重放</li>
+    <li><code>core/forkchoice.go</code>：分叉选择</li>
+    <li><code>miner/worker.go</code> 的 <code>commitWork</code>，配合 <code>parlia.go</code> 的 <code>Prepare</code>、<code>Delay</code>、<code>Seal</code>：出块</li>
+    <li><code>core/vote/</code> 全部 4 个文件，加上 <code>parlia.go</code> 的 <code>assembleVoteAttestation</code> 和 <code>verifyVoteAttestation</code>：最终性</li>
+    <li><code>miner/bid_simulator.go</code>、<code>miner/bid_block.go</code>：MEV</li>
+    <li><code>eth/handler.go</code>、<code>eth/handler_bsc.go</code>、<code>eth/protocols/bsc/</code>：网络传播</li>
+  </ol>
+</section>
+
+</main>
+</div>
+
+<footer>根据仓库源码整理（commit 54afaff4d），文中行号仅对该 commit 有效。代码量统计不含 <code>_test.go</code> 和生成文件。</footer>
+
+<script>
+(function(){
+const C={tx:'#0E8A7D',produce:'#E3A008',mev:'#7A4BC0',final:'#C22D67',import:'#2C5BD4'};
+const LN={tx:'交易线',produce:'出块线',mev:'MEV 线',final:'投票线',import:'导入线'};
+const SEC={layers:'分层与代码量',parlia:'Parlia 出块',extra:'区块头 Extra',systx:'系统交易',finality:'快速最终性',forkchoice:'导入与分叉选择',mev:'MEV',lane:'Payment Lane',network:'网络与同步',storage:'存储',startup:'启动流程'};
+
+/* lp: label placement  b below, a above, r right, l left, ar above-right */
+const S=[
+ {id:'m_builder',x:90,y:200,lp:'a',nm:'外部 Builder',cd:'BEP-322 / 675',sec:'mev',
+  desc:'区块构建者在节点之外组装交易。Bid 模式（BEP-322）只提交一组交易和报价，由验证者模拟执行；Bid Block 模式（BEP-675）直接提交整块，验证者只做轻量检查后签名。验证者只接受 Mev.Builders 白名单里的 builder，发现问题时通过 mev_reportIssue 回报。',
+  files:['core/types/builder/bep-675-builder-integration.md','miner/builderclient/builderclient.go:31']},
+ {id:'m_rpc',x:230,y:200,lp:'a',nm:'mev 接口',cd:'mev_sendBid, gRPC',sec:'mev',
+  desc:'只接受“下一个块、本验证者是正当值、父块等于当前链头”的提交。bid 要在 bidBetterBefore 截止前到达；每个 builder 每块最多占 MaxBidsPerBuilder（默认 2）个名额。Bid Block 还可以通过 gRPC 提交，端口默认 8552。',
+  files:['internal/ethapi/api_mev.go:28 mev_sendBid','internal/ethapi/api_mev.go:92 mev_sendBidBlock','miner/miner_mev.go:175 SendBid','eth/backend.go:536 gRPC 服务']},
+ {id:'m_sim',x:370,y:200,lp:'a',nm:'Bid 模拟器',cd:'BidSimulator',sec:'mev',
+  desc:'对 bid：预留 25k gas 给付款交易 PayBidTx，执行 bid 里的交易（不可回滚的必须成功），检查奖励和最低 gas 价格；开启 GreedyMergeTx 时用本地交易池补满剩余空间，最后执行 PayBidTx 并检查 Payment Lane。只保留预期奖励最高的 bid，更好的 bid 会打断正在进行的模拟。对 bid block：不执行，只检查头部、TxHash、系统交易形状、存款金额和 sidecar，按 GasFee 取最高。',
+  files:['miner/bid_simulator.go:960 simBid','miner/bid_simulator.go:715 preSealVerifyBidBlock','miner/bid_simulator.go:436 newBidLoop']},
+ {id:'t_in',x:90,y:450,lp:'b',nm:'收交易',cd:'RPC, P2P',sec:'network',
+  desc:'交易从 eth_sendRawTransaction 或 P2P 进入。BSC 只向非 EVN 节点转发交易：小于 4096 字节的非 blob 交易整包发给按发送者确定的一组节点，其他（包括全部 blob 交易）只广播哈希。直接整包广播来的 blob 交易会被拒绝。',
+  files:['internal/ethapi/api.go eth_sendRawTransaction','eth/handler_eth.go:104','eth/handler.go:911 BroadcastTransactions']},
+ {id:'t_pool',x:240,y:450,lp:'b',nm:'交易池',cd:'core/txpool',sec:'lane',
+  desc:'由 legacypool（普通交易）和 blobpool（EIP-4844）两个子池组成，取待打包交易时合并。legacypool 默认每账户 200 槽、全局 8000 槽、交易存活 3 小时；blobpool 上限 2.5 GiB，BSC 拒绝 cell-proof（v1）格式的 sidecar。没有 bundle 池；locals 只负责本地交易重发和打包优先级。',
+  files:['core/txpool/txpool.go:366 Pending','core/txpool/legacypool/legacypool.go:161 默认配置','core/txpool/blobpool/blobpool.go:1237','eth/backend.go:438']},
+ {id:'p_loop',x:90,y:330,lp:'b',nm:'触发构建',cd:'newWorkLoop',sec:'parlia',
+  desc:'worker 启动 5 个 goroutine：newWorkLoop、mainLoop、taskLoop、resultLoop、badBidBlockLoop。新链头、启动和 recommit 定时器都会触发一次构建；构建前先问 Parlia 自己是否“最近签过”，是就不出块。节点同步期间 miner 会暂停。',
+  files:['miner/worker.go:332 启动','miner/worker.go:435 newWorkLoop','miner/worker.go:537 mainLoop','miner/miner.go:88 同步时暂停']},
+ {id:'p_prepare',x:220,y:330,lp:'b',nm:'填写区块头',cd:'Parlia.Prepare',sec:'parlia',
+  desc:'Coinbase 设为本验证者；难度正当值为 2、否则为 1；时间戳 = 父块毫秒时间 + BlockInterval + backoff（毫秒部分存在 MixDigest）；Extra 写入 vanity 和 forkHash，epoch 块再写入验证者列表、BLS 公钥和 TurnLength。gas 上限按 GasCeil 逐步调整。',
+  files:['consensus/parlia/parlia.go:1186 Prepare','consensus/parlia/ramanujanfork.go:31','miner/worker.go:1035 prepareWork']},
+ {id:'X_worker',x:360,y:330,lp:'a',nm:'worker 打包',cd:'commitWork',sec:'lane',
+  desc:'并行构建几个候选块，取手续费最高的。gas 池 = GasLimit 减去系统交易预留（普通 1M，breathe 块 20M）。先放优先账户的交易，再按小费从高到低、同账户按 nonce 依次取。每笔检查中断、gas、时间、blob 数量（BEP-657：只有块号是 5 的倍数才放 blob）、Payment Lane 和区块大小。时间预算由 Parlia.Delay 给出，结束前留 DelayLeftOver（15ms）。',
+  files:['miner/worker.go:1354 commitWork','miner/worker.go:1140 fillTransactions','miner/worker.go:845 commitTransactions','miner/ordering.go']},
+ {id:'X_select',x:500,y:330,lp:'b',nm:'三选一',cd:'本地 / bid / bid block',sec:'mev',
+  desc:'本验证者是正当值时，比较本地块、最佳模拟 bid、最佳 bid block。bid block 要在区块奖励和验证者奖励上都胜过最佳 bid，并且手续费高于本地块。bid block 获胜后检查 KZG 证明、由验证者签名系统交易、重算 TxHash；这一步失败就退回最佳 bid。',
+  files:['miner/worker.go:1529 选本地最佳','miner/worker.go:1572 比较 bid / bid block','miner/bid_block.go:52']},
+ {id:'p_finalize',x:650,y:330,lp:'b',nm:'系统交易',cd:'FinalizeAndAssemble',sec:'systx',
+  desc:'在交易之后追加系统交易并组装区块：升级系统合约代码、必要时惩罚缺席的正当值验证者、把手续费存入 ValidatorContract、每 200 块分配最终性奖励、每日首块更新验证者集合。最后并行计算状态根。出块时用验证者密钥签名这些系统交易（Mining 模式）。',
+  files:['consensus/parlia/parlia.go:1542 FinalizeAndAssemble','core/state_processor.go:484 AssembleBlock']},
+ {id:'X_seal',x:820,y:330,lp:'ar',nm:'签名封块',cd:'Parlia.Seal',sec:'extra',
+  desc:'等到区块头的毫秒时间点；从投票池取父块的投票，凑够 ⌈2N/3⌉ 就聚合 BLS 签名写进 Extra；然后用 secp256k1 对 SealHash 签名，放在 Extra 最后 65 字节。补出块（非正当值）如果发现同高度的正当值块正在处理，会再多等一会儿。',
+  files:['consensus/parlia/parlia.go:1755 Seal','consensus/parlia/parlia.go:1073 assembleVoteAttestation','miner/worker.go:601 taskLoop 调用 Seal']},
+ {id:'X_result',x:1050,y:330,lp:'a',nm:'写入本地链',cd:'resultLoop',sec:'forkchoice',
+  desc:'同一父块只签一次（recordMinedBlock 防双签）。本地块调用 WriteBlockAndSetHead 写入链（虚线：与导入线最后一站是同一个函数），然后发出 NewMinedBlockEvent。bid block 例外：先广播，再走 InsertChain 校验；校验失败就吊销该 builder 24 小时。',
+  files:['miner/worker.go:616 resultLoop','miner/worker.go:704 recordMinedBlock','miner/bid_block.go:337 handleBidBlockResult']},
+ {id:'p_broadcast',x:1180,y:330,lp:'b',nm:'广播',cd:'BroadcastBlock',sec:'network',
+  desc:'完整 NewBlock 发给 √N 个节点（开启 DirectBroadcast 时发给全部），另外必发所有代理节点和 EVN 节点；其余节点只收 NewBlockHashes。到这里这个块就从本节点的出块线进入其他节点的导入线。',
+  files:['eth/handler.go:774 BroadcastBlock','eth/handler.go:1015 minedBroadcastLoop','eth/handler.go:869 EVN 全量广播']},
+ {id:'f_head',x:90,y:110,lp:'a',nm:'新块头已验证',cd:'HighestVerifiedHeader',sec:'finality',
+  desc:'区块头通过验证后发出事件，触发投票。以下情况不投：节点在同步、开始挖矿还不到 40 个块、本地 BLS 公钥不在当前验证者集合里。',
+  files:['core/vote/vote_manager.go:97','core/vote/vote_manager.go:25','consensus/parlia/parlia.go:1649 IsActiveValidatorAt']},
+ {id:'f_vm',x:290,y:110,lp:'a',nm:'投票规则',cd:'VoteManager',sec:'finality',
+  desc:'投票前检查三条规则：同一目标高度不投两票；256 块内不出现包围投票；只投规范链头。太晚的投票直接放弃。投票内容 VoteData = {source：当前 justified 块，target：新块}。',
+  files:['core/vote/vote_manager.go:255 UnderRules','core/vote/vote_manager.go:166','core/types/vote.go:15 VoteData']},
+ {id:'f_sign',x:520,y:110,lp:'a',nm:'BLS 签名',cd:'VoteSigner',sec:'finality',
+  desc:'用 Prysm keymanager 钱包里的 BLS 密钥签名 VoteData 哈希。先写投票日志（WAL，最多 512 条），再放进投票池；重启后据此避免投出与之前矛盾的票。',
+  files:['core/vote/vote_signer.go:32','core/vote/vote_journal.go:14']},
+ {id:'X_pool',x:820,y:110,lp:'a',nm:'投票池',cd:'VotePool',sec:'finality',
+  desc:'接受目标高度在 (链头 − 256, 链头 + 11] 内的投票，分为当前票和未来票两组；每个块哈希最多 21 票。入池前验证 BLS 签名，并要求 source 等于 justified 块。每进一票都检查是否已达法定票数，可提前通知最终性。出块者在 Seal 时从这里取票。',
+  files:['core/vote/vote_pool.go:148','core/vote/vote_pool.go:378','consensus/parlia/parlia.go:1663 VerifyVote']},
+ {id:'f_gossip',x:1020,y:110,lp:'a',nm:'投票广播',cd:'bsc 协议 Votes',sec:'network',
+  desc:'每张票单独发送，对象是代理节点、EVN 节点，以及 TD 与本节点相差不超过 1000 的节点。收到的包只取第一张票，每个节点限速 68 票/秒。新连上的节点会收到池里现有的全部投票。',
+  files:['eth/protocols/bsc/protocol.go:33 VotesMsg = 0x01','eth/handler.go:969 BroadcastVote','eth/handler_bsc.go:53','eth/protocols/bsc/peer.go:26 限速']},
+ {id:'f_snap',x:940,y:450,lp:'l',nm:'推进最终性',cd:'Snapshot',sec:'finality',
+  desc:'校验区块头时读出其中的投票证明，更新 Snapshot：target 成为新的 justified 块；如果 source + 1 == target，source 成为 finalized 块。Fermi 起 target 可以是 3 代以内的祖先（之前必须是父块）。',
+  files:['consensus/parlia/snapshot.go:199 updateAttestation','consensus/parlia/parlia.go:472 verifyVoteAttestation','consensus/parlia/parlia.go:2262 GetJustifiedNumberAndHash','consensus/parlia/parlia.go:2286 GetFinalizedHeader']},
+ {id:'i_p2p',x:90,y:560,lp:'b',nm:'收块',cd:'NewBlock',sec:'network',
+  desc:'NewBlockHashes 交给 fetcher.Notify，NewBlock 交给 fetcher.Enqueue 并更新对方的链头和 TD。节点之间通过 eth/68、eth/70、snap/1、bsc/1、bsc/2 子协议通信；底层是 discv4/discv5 节点发现和 RLPx 加密连接。',
+  files:['eth/handler_eth.go:135','eth/protocols/eth/protocol.go:62 消息表','p2p/server.go']},
+ {id:'i_fetch',x:200,y:560,lp:'a',nm:'取块与同步',cd:'fetcher, downloader',sec:'network',
+  desc:'已同步的节点由 fetcher 逐块导入；开启快速取块时用 bsc/2 的 GetBlocksByRange 一次取最多 64 块。落后较多时，chainSyncer 选 TD 最高的节点，由 downloader 做 full 或 snap 同步，headers、bodies、receipts 并发下载。',
+  files:['eth/fetcher/block_fetcher.go','eth/handler.go:308 快速取块','eth/sync.go:148 chainSyncer','eth/downloader/downloader.go:651 spawnSync']},
+ {id:'i_insert',x:310,y:560,lp:'b',nm:'导入入口',cd:'InsertChain',sec:'forkchoice',
+  desc:'检查区块连续、加 chainmu 锁、并行恢复交易发送者，然后依次经过后面几站。遇到祖先状态已裁剪、未来块、未知祖先时，分别交给侧链导入、祖先恢复或未来块队列。',
+  files:['core/blockchain.go:2217 InsertChain','core/blockchain.go:2256 insertChain','core/blockchain_insert.go:120']},
+ {id:'i_da',x:420,y:560,lp:'a',nm:'Blob 可用性',cd:'IsDataAvailable',sec:'storage',
+  desc:'BSC 的 blob sidecar 跟区块一起传输（BEP-336）。检查 sidecar 数量是否等于 blob 交易数、版本哈希和 KZG 证明是否正确、blob 总数不超上限。超过 18.2 天的旧块跳过检查。多个块并行检查。',
+  files:['core/data_availability.go:56 IsDataAvailable','core/data_availability.go:127 CheckDataAvailableInBatch','params/protocol_params.go:209 保留期']},
+ {id:'i_verify',x:530,y:560,lp:'b',nm:'校验区块头',cd:'VerifyHeaders',sec:'parlia',
+  desc:'并发校验 Parlia 规则：出块者是否是验证者、是否最近签过、时间戳和 backoff、难度、epoch 块的验证者列表和 TurnLength，以及投票证明的票数和聚合签名。',
+  files:['consensus/parlia/parlia.go verifyHeader / verifySeal','consensus/parlia/parlia.go:472 verifyVoteAttestation','consensus/parlia/ramanujanfork.go:43']},
+ {id:'i_body',x:640,y:560,lp:'a',nm:'校验区块体',cd:'ValidateBody',sec:'forkchoice',
+  desc:'用三个 goroutine 并行检查：交易根；withdrawals、交易里不能夹带 sidecar、blob gas 是否匹配；父块状态是否存在（不存在则判为未知祖先或祖先已裁剪）。',
+  files:['core/block_validator.go:52']},
+ {id:'i_process',x:750,y:560,lp:'b',nm:'执行交易',cd:'StateProcessor',sec:'systx',
+  desc:'预取器先在一个临时状态上把交易跑一遍，提前把要用的状态读进缓存。正式执行时先按硬分叉升级系统合约代码，再把交易分成两类：系统交易先挑出来不执行，普通交易进 EVM 执行（core/vm，含 BSC 预编译）。',
+  files:['core/blockchain.go:2617 ProcessBlock','core/state_prefetcher.go:61','core/state_processor.go:71 Process','core/state_processor.go:136 系统交易分离']},
+ {id:'i_finalize',x:860,y:560,lp:'a',nm:'系统交易',cd:'Parlia.Finalize',sec:'systx',
+  desc:'与出块线的 FinalizeAndAssemble 是同一套逻辑，但运行在 Importing 模式：自己重算应有的系统交易，与区块里的逐笔比对哈希，不一致即拒块。之后检查 Payment Lane 配额（Jenner 起）。',
+  files:['consensus/parlia/parlia.go:1433 Finalize','consensus/parlia/parlia.go:2161 系统交易比对','core/state_processor.go:200 lane.Verify']},
+ {id:'i_vstate',x:960,y:560,lp:'b',nm:'校验状态',cd:'ValidateState',sec:'forkchoice',
+  desc:'先比 gasUsed，再并行校验 bloom、收据根、EIP-7685 requests 和状态根。',
+  files:['core/block_validator.go:147']},
+ {id:'X_fork',x:1050,y:560,lp:'r',nm:'分叉选择并写入',cd:'writeBlockAndSetHead',sec:'forkchoice',
+  desc:'先比 justified 高度，高的链胜；相同再比 TD，然后依次比高度、时间戳、哈希。确定后在一个批次里写入区块、收据和 blob sidecar，提交状态，必要时 reorg，并把 finalized 头更新为 Parlia 给出的值。本地出块的块也从这里写入。',
+  files:['core/forkchoice.go:129 ReorgNeededWithFastFinality','core/blockchain.go:2123 writeBlockAndSetHead','core/blockchain.go:1963 writeBlockWithState','core/blockchain.go:3079 reorg']},
+ {id:'i_triedb',x:1050,y:650,lp:'b',nm:'状态树',cd:'triedb/pathdb',sec:'storage',
+  desc:'默认 path 方案：内存保留 128 层 diff layer，第 129 层是磁盘层；写缓冲默认 64MB；保留 60 万块的状态历史；退出时写 merkle.journal。hash 方案仅在已有数据库是 hash 时沿用。',
+  files:['triedb/pathdb/config.go:38','triedb/pathdb/database.go:326','core/state/statedb.go']},
+ {id:'i_freezer',x:1180,y:650,lp:'b',nm:'区块存储',cd:'rawdb, freezer',sec:'storage',
+  desc:'单个 chaindata 库（Pebble 或 LevelDB）。超过 60 万块的数据迁入 freezer：headers、hashes、bodies、receipts、diffs，以及 BSC 新增的 blobs 表。可用 --history.blocks 在线裁剪旧区块。',
+  files:['core/rawdb/chain_freezer.go','core/rawdb/ancient_scheme.go:27','params/network_params.go:32']}
+];
+const L={
+ mev:[['m_builder','m_rpc','m_sim','X_select']],
+ tx:[['t_in','t_pool','X_worker']],
+ produce:[['p_loop','p_prepare','X_worker','X_select','p_finalize','X_seal','X_result','p_broadcast']],
+ final:[['f_head','f_vm','f_sign','X_pool','X_seal','f_snap','X_fork'],['X_pool','f_gossip']],
+ import:[['i_p2p','i_fetch','i_insert','i_da','i_verify','i_body','i_process','i_finalize','i_vstate','X_fork','i_triedb','i_freezer']]
+};
+const ORDER=['import','final','produce','tx','mev'];
+const byId={};S.forEach(s=>{byId[s.id]=s;s.lines=[];});
+for(const k in L)L[k].forEach(seq=>seq.forEach(id=>{if(!byId[id].lines.includes(k))byId[id].lines.push(k)}));
+
+const NS='http://www.w3.org/2000/svg',svg=document.getElementById('map');
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);(p||svg).appendChild(e);return e;};
+
+/* line badges */
+const badge=(k,y,txt)=>{const g=el('g',{class:'badge','data-line':k});el('rect',{x:14,y:y-11,width:50,height:22,rx:11,fill:C[k]},g);
+  const t=el('text',{x:39,y:y+1,fill:k==='produce'?'#17212B':'#fff'},g);t.textContent=txt;return g;};
+
+const lineEls=[];
+ORDER.forEach(k=>L[k].forEach((seq,i)=>{
+  const pts=seq.map(id=>byId[id]);
+  let d='';
+  if(i===0){d='M64 '+pts[0].y+' L'+pts[0].x+' '+pts[0].y;}else{d='M'+pts[0].x+' '+pts[0].y;}
+  pts.slice(1).forEach(p=>{d+=' L'+p.x+' '+p.y;});
+  const path=el('path',{d:d,class:'line',stroke:C[k],'data-line':k});
+  lineEls.push(path);
+}));
+const tr=el('path',{d:'M1050 330 L1050 560',class:'transfer','data-line':'produce import'});
+const badges=[badge('final',110,'投票'),badge('mev',200,'MEV'),badge('produce',330,'出块'),badge('tx',450,'交易'),badge('import',560,'导入')];
+
+const stEls={};
+S.forEach(s=>{
+  const multi=s.lines.length>1;
+  const g=el('g',{class:'st',tabindex:0,role:'button','aria-label':s.nm+'，'+s.cd,'data-id':s.id});
+  const r=multi?10:6.5;
+  el('circle',{cx:s.x,cy:s.y,r:r+6,class:'ring'},g);
+  el('circle',{cx:s.x,cy:s.y,r:r,class:'dot',stroke:multi?'#17212B':C[s.lines[0]]},g);
+  let nx=s.x,ny,cy,anchor='middle';
+  switch(s.lp){
+    case 'a':ny=s.y-(multi?36:32);cy=ny+15;break;
+    case 'b':ny=s.y+(multi?32:28);cy=ny+15;break;
+    case 'r':nx=s.x+18;ny=s.y-2;cy=ny+15;anchor='start';break;
+    case 'l':nx=s.x-20;ny=s.y-2;cy=ny+15;anchor='end';break;
+    case 'ar':nx=s.x+16;ny=s.y-32;cy=ny+15;anchor='start';break;
+  }
+  const t1=el('text',{x:nx,y:ny,class:'nm','text-anchor':anchor},g);t1.textContent=s.nm;
+  const t2=el('text',{x:nx,y:cy,class:'cd','text-anchor':anchor},g);t2.textContent=s.cd;
+  g.addEventListener('click',()=>select(s.id));
+  g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(s.id);}});
+  stEls[s.id]=g;
+});
+
+/* ---------- detail panel ---------- */
+const det=document.getElementById('detail');
+const pills=ls=>ls.map(k=>'<span class="pill '+k+'" style="--c:'+C[k]+'">'+LN[k]+'</span>').join('');
+function guide(){
+  det.innerHTML='<div class="guide"><h3>怎么读这张图</h3><p>五条线是 BSC 节点里的五条数据流。点任意站点看源码位置和原理；点上方按钮只看某一条线。</p><dl>'+
+  '<dt style="--c:'+C.tx+'">交易线</dt><dd>交易从 RPC 或 P2P 进入交易池，等待 worker 取走打包。</dd>'+
+  '<dt style="--c:'+C.produce+'">出块线</dt><dd>本节点是验证者时：构建、选择、签名并广播一个新块。</dd>'+
+  '<dt style="--c:'+C.mev+'">MEV 线</dt><dd>外部 builder 提交 bid 或整块，与本地块竞争。</dd>'+
+  '<dt style="--c:'+C.final+'">投票线</dt><dd>BLS 投票被聚合进区块头，推进 justified 和 finalized。</dd>'+
+  '<dt style="--c:'+C.import+'">导入线</dt><dd>所有节点都会走：收块、校验、执行、分叉选择、落盘。</dd></dl>'+
+  '<p class="keys"><svg class="keysvg" width="22" height="22"><circle cx="11" cy="11" r="8" fill="#fff" stroke="#17212B" stroke-width="3"/></svg>黑圈是换乘站：几条线共用的组件。<br><svg class="keysvg" width="22" height="10"><line x1="2" y1="5" x2="20" y2="5" stroke="#55616B" stroke-width="2.5" stroke-dasharray="3 5" stroke-linecap="round"/></svg>虚线：本地出的块与导入的块走同一个写链函数。</p></div>';
+}
+let cur=null;
+function select(id){
+  if(cur&&stEls[cur])stEls[cur].classList.remove('sel');
+  if(cur===id){cur=null;guide();return;}
+  cur=id;const s=byId[id];stEls[id].classList.add('sel');
+  det.innerHTML='<div>'+pills(s.lines)+'</div><h3>'+s.nm+'</h3><p class="d-code">'+s.cd+'</p><p>'+s.desc+'</p>'+
+   '<ul>'+s.files.map(f=>{const i=f.indexOf(' ');const pth=i<0?f:f.slice(0,i),nt=i<0?'':f.slice(i+1);return '<li><code>'+pth+'</code>'+(nt?'<span>'+nt+'</span>':'')+'</li>';}).join('')+'</ul>'+
+   (s.sec?'<p><a href="#'+s.sec+'">展开阅读：'+SEC[s.sec]+'</a></p>':'')+
+   '<p class="note"><a href="#" id="back">返回图例</a></p>';
+  document.getElementById('back').addEventListener('click',e=>{e.preventDefault();select(id);});
+}
+guide();
+
+/* ---------- line focus ---------- */
+const btns=[...document.querySelectorAll('.lbtn')];
+function focusLine(k){
+  btns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.line===k)));
+  lineEls.forEach(p=>p.classList.toggle('dim',k!=='all'&&p.dataset.line!==k));
+  badges.forEach(b=>b.classList.toggle('dim',k!=='all'&&b.dataset.line!==k));
+  tr.classList.toggle('dim',k!=='all'&&!tr.dataset.line.split(' ').includes(k));
+  S.forEach(s=>stEls[s.id].classList.toggle('dim',k!=='all'&&!s.lines.includes(k)));
+}
+btns.forEach(b=>b.addEventListener('click',()=>focusLine(b.dataset.line===document.querySelector('.lbtn[aria-pressed="true"]').dataset.line&&b.dataset.line!=='all'?'all':b.dataset.line)));
+
+/* ---------- one orchestrated entrance: lines draw in ---------- */
+if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  const stg=[...svg.querySelectorAll('.st,.transfer')];
+  stg.forEach(g=>{g.style.opacity=0;});
+  lineEls.forEach((p,i)=>{
+    const len=p.getTotalLength();p.style.strokeDasharray=len;p.style.strokeDashoffset=len;
+    p.animate([{strokeDashoffset:len},{strokeDashoffset:0}],{duration:900,delay:i*140,easing:'cubic-bezier(.6,0,.2,1)',fill:'forwards'})
+     .finished.then(()=>{p.style.strokeDasharray='';p.style.strokeDashoffset='';});
+  });
+  setTimeout(()=>stg.forEach((g,i)=>{g.animate([{opacity:0},{opacity:1}],{duration:260,delay:i*12,fill:'forwards'}).finished.then(()=>{g.style.opacity='';});}),900);
+}
+
+/* ---------- layers ---------- */
+const ROWS=[
+ ['入口','cmd/',[['cmd/geth',6458],['cmd/utils',4423],['其他工具',19686]],'geth 主程序、命令行参数，以及 clef、bootnode、devp2p、evm、extradump、maliciousvote-submit 等工具'],
+ ['节点与接口','node rpc',[['node',3082],['rpc',4661],['internal/ethapi',5813],['graphql',2219]],'节点容器与生命周期，HTTP/WS/IPC 服务，eth_* 与 mev_* 接口实现'],
+ ['协议服务','eth/',[['eth (backend, handler)',5509],['eth/protocols',9731,1],['eth/downloader',4691],['eth/fetcher',2192],['eth/tracers',6454],['eth/catalyst',2362],['eth/filters',2123]],'把各组件装配成一个以太坊服务；处理 eth、snap、bsc 三个子协议，同步与广播'],
+ ['出块与共识','miner consensus',[['consensus/parlia',10398,1],['miner',5689,1],['core/systemcontracts',1916,1],['core/vote',979,1],['core/monitor',194,1],['consensus 其他',2958]],'Parlia 引擎、出块 worker 与 MEV、系统合约升级、BLS 投票。BSC 的主要差异都在这一层'],
+ ['链与执行','core/',[['core (blockchain…)',10782],['core/vm',16362],['core/txpool',7804],['core/types',6854],['core/filtermaps',3936],['core/paymentlane*',591,1]],'区块链主干、交易执行、EVM 与 BSC 预编译、交易池、数据结构'],
+ ['状态','state trie',[['core/state',13427],['triedb/pathdb',13817],['trie',9462],['triedb/hashdb',640]],'StateDB、快照、MPT，以及 path / hash 两种 trie 存储方案'],
+ ['存储','rawdb ethdb',[['core/rawdb',10767],['ethdb',3332]],'键值布局、freezer 冷数据、Pebble / LevelDB 适配'],
+ ['P2P 网络','p2p/',[['p2p/discover',5277],['p2p/enode',2086],['p2p 其他',8907]],'节点发现、RLPx 加密连接、EVN / 代理节点标记'],
+ ['基础库','',[['accounts',19526],['crypto',9221],['rlp',4446],['common',4143],['signer',3876],['params',2920,1]],'密钥与钱包、密码学、RLP 编码、链参数与硬分叉定义']
+];
+const max=Math.max(...ROWS.flatMap(r=>r[2].map(c=>c[1])));
+document.getElementById('layerRows').innerHTML=ROWS.map(([n,sub,pk,desc])=>
+  '<div class="layer"><div class="ln">'+n+(sub?'<span>'+sub+'</span>':'')+'</div><div><p class="desc">'+desc+'</p><div class="pkgs">'+
+   pk.map(([c,k,b])=>'<div class="pk'+(b?' bsc':'')+'"><div class="tp"><b>'+c+'</b><i>'+(k/1000).toFixed(1)+'k</i></div><div class="bar"><span style="width:'+(k/max*100).toFixed(1)+'%"></span></div></div>').join('')+
+   '</div></div></div>').join('');
+
+/* ---------- parlia slot strip ---------- */
+const row=document.getElementById('slotRow');
+for(let i=0;i<40;i++){const sp=document.createElement('span');sp.style.setProperty('--c',i<16?'#17212B':i<32?'#7C8A92':'#C4CDCB');if(i===0||i===16||i===32)sp.style.boxShadow='inset 0 4px 0 #E3A008';row.appendChild(sp);}
+
+/* ---------- toc highlight ---------- */
+const links=[...document.querySelectorAll('.toc a')];
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+e.target.id));}});},{rootMargin:'-20% 0px -70% 0px'});
+document.querySelectorAll('main section').forEach(s=>io.observe(s));
+})();
+</script>
+</body>
+</html>

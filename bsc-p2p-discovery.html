@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BSC 节点发现与连接流程</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F1F4F3; --panel:#FFFFFF; --ink:#17212B; --ink2:#55616B; --rule:#D3DAD8; --wash:#E7ECEA;
+  --udp:#0E8A7D; --udp-bg:#E3F2EF; --tcp:#2C5BD4; --tcp-bg:#E6ECFB; --bad:#C22D67; --bad-bg:#FBEFF4; --hl:#FBF3DC;
+  --sans:"Overpass","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--tcp)}
+a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+code{font-family:var(--mono);font-size:.84em;background:var(--wash);padding:.08em .35em;border-radius:3px}
+
+.top{max-width:1320px;margin:0 auto;padding:44px 32px 18px}
+.top h1{font-size:44px;line-height:1.12;font-weight:800;margin:0 0 14px;letter-spacing:-.01em}
+.top .lede{font-size:18px;color:var(--ink2);max-width:46em;margin:0}
+.top .meta{font-size:14px;color:var(--ink2);margin:10px 0 0}
+
+/* ---------- stepper ---------- */
+.seq{max-width:1320px;margin:0 auto;padding:12px 32px 0;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+.seq-fig{background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow-x:auto}
+#seq{display:block;width:100%;min-width:680px;height:auto}
+#seq text{font-family:var(--sans)}
+#seq .actor-n{font-size:14.5px;font-weight:800}
+#seq .actor-d{font-size:12px;fill:var(--ink2)}
+#seq .life{stroke:#B9C3C1;stroke-width:1.5;stroke-dasharray:2 5}
+#seq .ph text{font-size:12.5px;font-weight:700;fill:var(--ink2)}
+#seq .ph line{stroke:var(--rule);stroke-width:1}
+#seq .band{fill:var(--hl);opacity:0;transition:opacity .2s}
+#seq .band.on{opacity:1}
+#seq .r{cursor:pointer;transition:opacity .2s}
+#seq .r.fut{opacity:.16}
+#seq .r.past{opacity:.55}
+#seq .r:hover{opacity:1}
+#seq .msg{fill:none;stroke-linecap:round}
+#seq .msg.udp{stroke:var(--udp);stroke-width:2.2;stroke-dasharray:7 5}
+#seq .msg.tcp{stroke:var(--tcp);stroke-width:3.2}
+#seq .r.cur .msg.udp{stroke-width:3}
+#seq .r.cur .msg.tcp{stroke-width:4.2}
+#seq .lbl{font-size:12.5px;text-anchor:middle;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round}
+#seq .r.cur .lbl{font-weight:800}
+#seq .r.cur .lbl{stroke:var(--hl)}
+#seq .note{stroke-width:1.5;fill:#fff;stroke:var(--ink)}
+#seq .note.ok{fill:var(--udp-bg);stroke:var(--udp)}
+#seq .note.bad{fill:var(--bad-bg);stroke:var(--bad)}
+#seq .note-t{font-size:12.5px;text-anchor:middle}
+#seq .hit{fill:transparent}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;color:var(--ink2);padding:10px 18px 14px;border-top:1px solid var(--rule)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+
+.panel{position:sticky;top:16px;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:20px 22px 18px;max-height:calc(100vh - 32px);overflow:auto;font-size:15px;line-height:1.7}
+.prog{display:flex;gap:3px;margin:0 0 14px}
+.prog button{flex:1;height:9px;border:0;border-radius:2px;padding:0;cursor:pointer;opacity:.35;background:var(--c)}
+.prog button.on{opacity:1;box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink)}
+.prog button.done{opacity:.75}
+.p-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--ink2)}
+.tagp{display:inline-block;font:700 12px/1 var(--sans);padding:5px 9px 4px;border-radius:999px}
+.tagp.udp{background:var(--udp-bg);color:#0A6B61}
+.tagp.tcp{background:var(--tcp-bg);color:#23479F}
+.tagp.local{background:var(--wash);color:var(--ink2)}
+.panel h2{font-size:22px;line-height:1.3;margin:8px 0 8px;font-weight:800}
+.panel p{margin:0 0 12px}
+.panel .why{background:var(--paper);border-radius:4px;padding:10px 12px}
+.panel .why b{display:block;font-size:13px;margin-bottom:2px}
+.panel ul{margin:0 0 12px;padding-left:1.15em}
+.panel li{margin:0 0 5px}
+.pkt{margin:0 0 12px;border:1.5px solid var(--ink);border-radius:4px}
+.pkt .h{font-size:13px;font-weight:700;padding:6px 10px 5px;border-bottom:1px solid var(--rule)}
+.pkt dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:8px 10px}
+.pkt dt{font:600 12.5px/1.7 var(--mono)}
+.pkt dd{margin:0;font-size:14px;line-height:1.55;padding-top:1px}
+.refs{list-style:none;padding:0 !important;margin:4px 0 0 !important;border-top:1px solid var(--rule);padding-top:10px !important}
+.refs li{margin:0 0 7px}
+.refs code{display:block;background:none;padding:0;font-size:12px;overflow-wrap:anywhere;color:var(--ink)}
+.refs span{display:block;font-size:13px;color:var(--ink2);line-height:1.4}
+.nav{display:flex;gap:8px}
+.nav button{flex:1;font:700 15px/1 var(--sans);padding:11px 12px 9px;border-radius:5px;cursor:pointer;border:2px solid var(--ink)}
+.nav .prev{background:#fff;color:var(--ink)}
+.nav .next{background:var(--ink);color:#fff}
+.nav button:disabled{opacity:.35;cursor:default}
+.kbd{font-size:12.5px;color:var(--ink2);margin:6px 0 14px !important;text-align:center}
+
+/* ---------- body ---------- */
+main{max-width:1320px;margin:0 auto;padding:64px 32px 72px}
+section{margin:0 0 72px;max-width:980px}
+h2.sec{font-size:30px;line-height:1.2;font-weight:800;margin:0 0 12px}
+main p{max-width:44em;margin:0 0 14px}
+.note2{font-size:14px;color:var(--ink2)}
+
+/* gates flowchart */
+.gates{list-style:none;padding:0;margin:22px 0 0;counter-reset:g}
+.gate{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);column-gap:34px;padding-bottom:20px;position:relative;counter-increment:g}
+.g-main{background:var(--panel);border:1.5px solid var(--ink);border-radius:6px;padding:11px 14px 10px 50px;position:relative}
+.g-main::before{content:counter(g);position:absolute;left:12px;top:11px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font:800 13px/27px var(--sans);text-align:center}
+.gate:not(:last-child) .g-main::after{content:"";position:absolute;left:24px;top:100%;width:2px;height:20px;background:var(--ink)}
+.g-main b{font-size:16px}
+.g-main .tagp{margin-left:8px;vertical-align:2px}
+.g-main p{margin:3px 0 0;font-size:14px;color:var(--ink2);line-height:1.6}
+.g-main .ref{font:400 12px var(--mono);color:var(--ink2);margin-top:4px;overflow-wrap:anywhere}
+.g-entry{display:inline-block;margin-top:6px;font-size:13px;font-weight:700;border:1.5px dashed var(--tcp);color:#23479F;border-radius:4px;padding:2px 8px 1px}
+.g-fail{align-self:center;position:relative;border-left:3px solid var(--bad);padding:2px 0 2px 14px;font-size:14px;line-height:1.6;color:var(--ink2)}
+.g-fail::before{content:"";position:absolute;left:-36px;top:50%;width:31px;border-top:2px dashed var(--bad)}
+.g-fail b{color:var(--bad);font-size:13.5px}
+.g-fail ul{margin:2px 0 0;padding-left:1.1em}
+.g-fail li{margin:0}
+.g-fail.none{border-left-color:var(--rule)}
+.g-fail.none::before{border-top-color:var(--rule)}
+.gate.end .g-main{border-color:var(--udp);background:var(--udp-bg)}
+.gate.end .g-main::before{background:var(--udp)}
+
+/* lookup */
+.lookup{width:100%;max-width:820px;height:auto;display:block;background:var(--panel);border:1px solid var(--rule);border-radius:6px;margin:16px 0 8px}
+.lookup text{font-family:var(--sans)}
+.legend2{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;color:var(--ink2)}
+.legend2 span{display:inline-flex;align-items:center;gap:7px}
+
+/* faq */
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 30px;margin-top:18px}
+.faq div{border-top:2px solid var(--ink);padding-top:10px}
+.faq h3{font-size:17px;margin:0 0 6px;font-weight:800}
+.faq p{font-size:15px;margin:0;color:var(--ink)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:22px 0 6px}
+th,td{text-align:left;padding:8px 14px 7px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-weight:700;border-bottom:2px solid var(--ink)}
+td.y{color:var(--udp);font-weight:700}
+td.n{color:var(--bad);font-weight:700}
+pre{background:var(--ink);color:#E9EEF0;border-radius:6px;padding:16px 18px;overflow-x:auto;font:13px/1.65 var(--mono);margin:16px 0}
+pre .c{color:#93A3AB}
+
+footer{max-width:1320px;margin:0 auto;padding:0 32px 48px;font-size:13px;color:var(--ink2)}
+
+@media (max-width:1080px){
+  .seq{grid-template-columns:1fr}
+  .panel{position:static;max-height:none}
+}
+@media (max-width:720px){
+  .top{padding:28px 18px 12px}.top h1{font-size:31px}
+  .seq,main,footer{padding-left:18px;padding-right:18px}
+  .gate{grid-template-columns:1fr;row-gap:8px}
+  .g-fail{margin-left:24px}
+  .g-fail::before{display:none}
+  .faq{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>BSC 节点是怎么找到彼此的</h1>
+  <p class="lede">一个新节点第一次启动时谁也不认识，从这里走到连上第一个节点，一共 17 步。前 11 步都是 UDP 小包：先向引导节点问路，再一轮轮向外扩散；后 6 步才是 TCP 连接和握手。可以点“下一步”逐步看，也可以直接点图上的箭头。</p>
+  <p class="meta">基于 bnb-chain/bsc v1.8.2，commit <code>54afaff4d</code>，行号以该 commit 为准。整体架构见 <a href="bsc-architecture.html">BSC 节点源码线路图</a>。</p>
+</header>
+
+<div class="seq">
+  <figure class="seq-fig" style="margin:0">
+    <svg id="seq" role="img" aria-label="新节点从启动到连上第一个节点的时序图"></svg>
+    <figcaption class="legend">
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="2" y1="5" x2="32" y2="5" stroke="#0E8A7D" stroke-width="2.2" stroke-dasharray="7 5"/></svg>UDP 包：发一个、回一个，不建立连接</span>
+      <span><svg width="34" height="10" aria-hidden="true"><line x1="2" y1="5" x2="32" y2="5" stroke="#2C5BD4" stroke-width="3.2"/></svg>TCP 连接：建立后一直保持，双向收发</span>
+      <span><svg width="22" height="14" aria-hidden="true"><rect x="1" y="1" width="20" height="12" rx="3" fill="#FBF3DC"/></svg>当前步骤</span>
+    </figcaption>
+  </figure>
+  <aside class="panel" id="panel" aria-live="polite"></aside>
+</div>
+
+<main>
+
+<section id="gates">
+  <h2 class="sec">一个候选节点要过的关卡</h2>
+  <p>换个角度看同一个过程：任何一个节点，从被 A 知道到成为 A 的连接，都要依次通过下面这些检查。右边是在这一关被淘汰的情况。</p>
+  <ol class="gates">
+    <li class="gate">
+      <div class="g-main"><b>进入路由表</b><span class="tagp udp">UDP</span>
+        <p>来源：引导节点、本地数据库里的旧节点、问路得到的节点。</p>
+        <div class="ref">p2p/discover/table.go:561 handleAddNode</div></div>
+      <div class="g-fail"><b>进不去的情况</b><ul>
+        <li>对应的桶满了（每桶 16 个）：先进候补名单（最多 10 个），等有节点失联再补上</li>
+        <li>同一 /24 网段超限：每桶最多 2 个，全表最多 10 个</li>
+        <li>自己的路由表还没初始化完时，不收主动找上门的节点</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>被随机游走选中</b><span class="tagp local">本地</span>
+        <p>路由表初始化完成后，eth 层不停地在里面随机漫游，产出候选节点。</p>
+        <div class="ref">eth/backend.go:1012 setupDiscovery</div></div>
+      <div class="g-fail none">这一步不淘汰节点。</div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>索要名片（ENR）</b><span class="tagp udp">UDP</span>
+        <p>问路得到的只有地址和公钥，要向对方本人要名片，才知道它是哪条链的节点。</p>
+        <div class="ref">p2p/discover/v4_udp.go:358 RequestENR</div></div>
+      <div class="g-fail"><b>被淘汰</b><ul><li>对方不响应，或者没有完成地址验证</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>ForkID 检查</b><span class="tagp local">本地</span>
+        <p>名片里的 eth 字段带着 ForkID，由创世哈希和已经过的硬分叉算出。</p>
+        <div class="ref">eth/protocols/eth/discovery.go:71 NewNodeFilter</div></div>
+      <div class="g-fail"><b>被淘汰</b><ul>
+        <li>名片里没有 eth 字段</li>
+        <li>ForkID 不兼容：以太坊或其他链的节点，没跟上硬分叉的旧版本 BSC 节点</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>拨号检查</b><span class="tagp local">本地</span>
+        <p>拨号器有空余出站名额时才取候选。默认最多主动拨 16 个（MaxPeers 50 ÷ 3）。</p>
+        <span class="g-entry">静态节点从这一关直接进入，并且优先拨</span>
+        <div class="ref">p2p/dial.go:418 checkDial，p2p/server.go:590</div></div>
+      <div class="g-fail"><b>跳过</b><ul>
+        <li>出站名额已满：先等着</li>
+        <li>是自己；名片里没有 TCP 端口</li>
+        <li>正在拨、已经连着、对方正在连进来</li>
+        <li>不在 <code>--netrestrict</code> 范围内；35 秒内拨过</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>TCP 拨号</b><span class="tagp tcp">TCP</span>
+        <p>连对方名片里的 IP 和 TCP 端口。</p>
+        <div class="ref">p2p/server.go:48 拨号超时</div></div>
+      <div class="g-fail"><b>失败</b><ul><li>15 秒内连不上：端口没开、被防火墙挡住、NAT 没做端口映射</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>RLPx 加密握手</b><span class="tagp tcp">TCP</span>
+        <p>交换临时密钥，之后所有数据加密；确认对方公钥就是它的节点 ID。</p>
+        <div class="ref">p2p/server.go:957 setupConn，p2p/transport.go:40</div></div>
+      <div class="g-fail"><b>断开</b><ul><li>5 秒内没完成</li><li>对方公钥和预期的节点 ID 不符</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>连接数检查</b><span class="tagp local">本地</span>
+        <p>TrustedNodes 里的节点不受这一关的上限限制。</p>
+        <div class="ref">p2p/server.go:800 postHandshakeChecks</div></div>
+      <div class="g-fail"><b>断开</b><ul>
+        <li>总数已到 MaxPeers（默认 50）</li>
+        <li>对方是连进来的，而入站名额（34 个）已满</li>
+        <li>重复连接；连到了自己</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>Hello：交换支持的协议</b><span class="tagp tcp">TCP</span>
+        <p>BSC 节点支持 eth/68、eth/70、snap/1、bsc/1、bsc/2。</p>
+        <div class="ref">p2p/server.go:815 addPeerChecks</div></div>
+      <div class="g-fail"><b>断开</b><ul><li>没有共同协议</li><li>客户端名称匹配了 <code>--peerfilter</code></li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>eth Status：确认是同一条链</b><span class="tagp tcp">TCP</span>
+        <p>比对网络 ID（主网 56）、协议版本、创世哈希、ForkID，校验 TD。</p>
+        <div class="ref">eth/protocols/eth/handshake.go:110，:166</div></div>
+      <div class="g-fail"><b>断开</b><ul><li>任何一项不符</li></ul></div>
+    </li>
+    <li class="gate">
+      <div class="g-main"><b>扩展握手与准入</b><span class="tagp tcp">TCP</span>
+        <p>等 snap、bsc 扩展协议就绪，再做最后的数量检查。TrustedNodes 和 EVN 节点免检。</p>
+        <div class="ref">eth/handler.go:441 runEthPeer</div></div>
+      <div class="g-fail"><b>断开</b><ul>
+        <li>snap 同步时，不支持 snap 的节点比支持的多出 5 个以上</li>
+        <li>总数超过 MaxPeers，或同一 IP 超过 MaxPeersPerIP</li></ul></div>
+    </li>
+    <li class="gate end">
+      <div class="g-main"><b>成为 peer</b>
+        <p>开始收发区块、交易和投票。节点数据库记下它，下次启动直接当种子。</p>
+        <div class="ref">eth/dropper.go，p2p/server.go:59，:62</div></div>
+      <div class="g-fail"><b>之后可能断开的情况</b><ul>
+        <li>连接数满时，每 3 到 7 分钟随机断开一个已连 10 分钟以上的普通节点，腾出位置</li>
+        <li>30 秒收不到任何消息，或 20 秒发不出一条消息</li></ul></div>
+    </li>
+  </ol>
+</section>
+
+<section id="lookup">
+  <h2 class="sec">路由表怎么从 6 个长到上百个</h2>
+  <p>第 6 到 8 步每一轮都在做同一件事：从已经认识的节点里，挑离目标最近、还没问过的 3 个去问。每个节点回答的都是它所知道的离目标最近的节点，所以一轮比一轮近，直到问不出更近的为止。这里的“距离”是节点 ID 的异或距离，跟地理位置无关。</p>
+  <svg class="lookup" id="lookupSvg" role="img" aria-label="逐轮查找示意图"></svg>
+  <div class="legend2">
+    <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="#B7C0C4"/></svg>之前已认识</span>
+    <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="#0E8A7D"/></svg>这一轮新认识</span>
+    <span><svg width="22" height="22" aria-hidden="true"><circle cx="11" cy="11" r="4.5" fill="#B7C0C4"/><circle cx="11" cy="11" r="9" fill="none" stroke="#17212B" stroke-width="2"/></svg>这一轮去问的节点</span>
+  </div>
+  <p class="note2" style="margin-top:10px">示意图，点的数量不是真实数据。实际上每次查找只保留离目标最近的 16 个结果，查找过程中收到的节点都会加进路由表（<code>p2p/discover/lookup.go:121</code>，<code>table.go:737</code>）。</p>
+</section>
+
+<section id="faq">
+  <h2 class="sec">几个容易混淆的地方</h2>
+  <div class="faq">
+    <div><h3>引导节点要开 TCP 吗？</h3><p>不需要。第 1 到 11 步全是 UDP，A 用 TCP 连的是 C 这样的普通节点。引导节点名片里的 TCP 端口如果是 0，拨号器会直接跳过它，不会出现连接失败（<code>p2p/dial.go:421</code>）。</p></div>
+    <div><h3>引导节点是专门的程序吗？</h3><p>不是。可以用仓库里的 <code>cmd/bootnode</code>（209 行，只做 UDP 发现），也可以直接用普通 geth：每个没加 <code>--nodiscover</code> 的节点都会回应 PING 和 FINDNODE。官方引导节点唯一特殊的地方，是地址被写进了 <code>params/bootnodes.go</code> 当默认值。</p></div>
+    <div><h3>第二次启动还需要引导节点吗？</h3><p>基本不需要。节点数据库 <code>&lt;datadir&gt;/geth/nodes</code> 记着最近见过的节点，重启时取最近 5 天内的最多 30 个当种子（<code>table.go:60</code>）。删掉这个目录，就回到第一次启动的状态。</p></div>
+    <div><h3>别人怎么发现我？</h3><p>就是第 4、5 步反过来：你向别人问路时，对方验证了你的地址并把你记进路由表，以后再把你介绍给别人。但想被别人连上，你的 TCP 端口必须能从公网访问。</p></div>
+  </div>
+  <table>
+    <thead><tr><th>UDP 30303</th><th>TCP 30303</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td class="y">通</td><td class="y">通</td><td>能发现别人、能被发现、能被连接，最多 50 个连接</td></tr>
+      <tr><td class="y">通</td><td class="n">入站被挡</td><td>能发现别人也能被发现，但别人连不进来：最多 16 个连接（全是你主动拨的），别人还会白白来拨你</td></tr>
+      <tr><td class="n">完全不通</td><td>任意</td><td>问不了路，找不到别人，也没人知道你；只能靠静态节点手动连接</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="try">
+  <h2 class="sec">自己动手看</h2>
+  <p>下面的命令能看到图里每一步真实发生的样子。<code>devp2p</code> 是本仓库自带的调试工具。</p>
+<pre><span class="c"># 第 2 到 11 步：打印节点发现的每一个包</span>
+geth ... --vmodule "p2p/discover=5"
+<span class="c"># 日志里会出现 >> PING/v4、<< PONG/v4、>> FINDNODE/v4、<< NEIGHBORS/v4</span>
+
+<span class="c"># 本节点的地址和名片</span>
+geth attach ./node/geth.ipc --exec 'admin.nodeInfo.enode'
+geth attach ./node/geth.ipc --exec 'admin.nodeInfo.enr'
+
+<span class="c"># 第 10、11 步：向某个节点要名片</span>
+go run ./cmd/devp2p discv4 requestenr "enode://...@IP:端口"
+<span class="c"># 第 12 到 14 步：测 TCP 连接和握手，成功会打印对方的客户端名和版本</span>
+go run ./cmd/devp2p rlpx ping "enode://...@IP:端口"
+
+<span class="c"># 当前连接数，以及其中有多少是别人连进来的</span>
+geth attach ./node/geth.ipc --exec 'admin.peers.length'
+geth attach ./node/geth.ipc --exec 'admin.peers.filter(p => p.network.inbound).length'</pre>
+</section>
+
+</main>
+
+<footer>根据仓库源码整理（commit 54afaff4d），文中行号只对该 commit 有效。</footer>
+
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;};
+const COL={udp:'#0E8A7D',tcp:'#2C5BD4',local:'#9AA6A3'};
+
+/* ================= steps ================= */
+const STEPS=[
+{tag:'local',t:'读入引导节点',
+ lead:'A 第一次启动，谁也不认识。它先确定一批可以问路的节点，放进节点发现用的路由表。',
+ items:['来源优先级：--bootnodes 参数，其次 config.toml 里的 BootstrapNodes，最后是代码内置的 6 个','内置的 6 个写在 params/bootnodes.go，由 BNB Chain 运维，编译进 geth 程序','再从本地节点数据库取最近 5 天见过的节点（最多 30 个）。第一次启动数据库是空的，所以路由表里只有这 6 个'],
+ refs:[['cmd/utils/flags.go:1476','setBootstrapNodes，决定用哪些引导节点'],['params/bootnodes.go:23','内置的 6 个引导节点'],['p2p/discover/table.go:208','setFallbackNodes，放进候补列表'],['p2p/discover/table.go:498','loadSeedNodes，数据库种子加引导节点入表']]},
+{tag:'udp',t:'PING：向引导节点打招呼',
+ lead:'A 准备向 B 问路，但 B 只回答验证过地址的节点，所以 A 先发一个 PING。UDP 不用建立连接，直接把包发到 B 的 IP 和 UDP 端口。',
+ pkt:[['Version','4'],['From','A 自己的地址：IP、UDP 端口、TCP 端口'],['To','B 的地址'],['Expiration','20 秒后作废，防止被截下来重放'],['ENRSeq','A 名片的版本号']],
+ why:'每个包都带签名。B 从签名里算出 A 的公钥，也就是 A 的节点 ID。所以不需要连接，B 也知道包是谁发的。',
+ refs:[['p2p/discover/v4_udp.go:609','ensureBond，问路前先确保对方验证过自己'],['p2p/discover/v4_udp.go:242','sendPing'],['p2p/discover/v4wire/v4wire.go:198','包头：哈希 32 字节、签名 65 字节'],['p2p/discover/v4_udp.go:54','过期时间 20 秒']]},
+{tag:'udp',t:'PONG：B 告诉 A 它看到的地址',
+ lead:'B 回复 PONG，里面写着“在我看来，你的地址是 1.2.3.4:30303”。',
+ pkt:[['To','B 看到的 A 的地址'],['ReplyTok','A 那个 PING 包的哈希，证明是对它的回复'],['Expiration','20 秒后作废'],['ENRSeq','B 名片的版本号']],
+ why:'A 在家用路由器后面时，并不知道自己的公网 IP。没有配置 --nat extip 的话，A 会收集这类说法，5 分钟内凑够 10 条一致的，就把这个地址写进自己的名片。',
+ refs:[['p2p/discover/v4_udp.go:698','handlePing，B 回复 PONG'],['p2p/discover/v4_udp.go:738','A 处理 PONG 时记下这条地址说法'],['p2p/enode/localnode.go:36','至少 10 条一致的说法才采信']]},
+{tag:'udp',t:'PING：B 反过来验证 A',
+ lead:'B 在 24 小时内没验证过 A，于是反过来 ping A 一次，看 A 是不是真的在这个地址上。',
+ why:'UDP 包的发送地址可以伪造，而 NEIGHBORS 回复比 FINDNODE 请求大得多。如果不先验证，攻击者可以伪造受害者的 IP 大量问路，让引导节点替他去轰炸受害者。',
+ items:['A 在家用路由器后面通常也没问题：B 发回的是 A 的包出来的那个地址，路由器会把它转给 A'],
+ refs:[['p2p/discover/v4_udp.go:711','超过 24 小时没验证过，就反向 ping'],['p2p/discover/v4_udp.go:55','bondExpiration，24 小时']]},
+{tag:'udp',t:'PONG：B 记住了 A',
+ lead:'A 回复 PONG。B 确认 A 的地址是真的，把 A 加进自己的路由表。',
+ items:['从这一刻起，别人向 B 问路时，B 也可能把 A 介绍出去。这就是“别人怎么发现我”的起点','B 对应的桶满了（每桶 16 个）就先放进候补名单（最多 10 个），等有节点失联再补上'],
+ refs:[['p2p/discover/v4_udp.go:714','addInboundNode，加进路由表'],['p2p/discover/table.go:561','handleAddNode，入表规则']]},
+{tag:'udp',t:'FINDNODE：问“谁离 A 最近”',
+ lead:'A 等到 B 的 PONG 后，再等 0.5 秒，给 B 留出反向验证的时间，然后发出 FINDNODE。',
+ pkt:[['Target','目标节点的公钥，64 字节。首次刷新时目标就是 A 自己'],['Expiration','20 秒后作废']],
+ why:'“离 A 最近”指的是节点 ID 的异或距离，跟地理位置无关。先找自己的邻居，就等于让 ID 离 A 近的那批节点都认识了 A；以后别人搜索到这个区域，问的正是它们。',
+ refs:[['p2p/discover/v4_udp.go:609','ensureBond，等待 0.5 秒'],['p2p/discover/v4_udp.go:321','findnode'],['p2p/discover/table.go:485','lookupSelf，查找离自己最近的节点'],['p2p/discover/v4_udp.go:751','B 不回答没验证过地址的节点']]},
+{tag:'udp',t:'NEIGHBORS：B 报出一串地址',
+ lead:'B 从自己的路由表里挑出离目标最近的 16 个节点，优先挑确认在线的。一个包最多放 12 个，所以分两个包发回。',
+ pkt:[['Nodes','每个节点 4 项：IP、UDP 端口、TCP 端口、公钥'],['Expiration','20 秒后作废']],
+ why:'这就是 A 要拿到的信息。每个节点的 TCP 端口告诉 A 以后该去连哪里，B 自己开不开 TCP 无关紧要。A 把这些节点加进自己的路由表。',
+ items:['一个 UDP 包不超过 1280 字节，所以每包最多 12 个节点','B 不会把内网地址或本机地址的节点告诉公网上的 A'],
+ refs:[['p2p/discover/v4_udp.go:763','handleFindnode，挑节点并分包发送'],['p2p/discover/v4wire/v4wire.go:107','MaxNeighbors = 12'],['p2p/discover/v4wire/v4wire.go:139','节点格式：IP、UDP、TCP、公钥'],['p2p/discover/table.go:737','收到的节点加进路由表']]},
+{tag:'udp',t:'下一轮：问更近的节点',
+ lead:'A 从已经认识的节点里，挑离目标最近、还没问过的，同时最多问 3 个。对每个都重复“互相验证，再 FINDNODE”。',
+ why:'每个节点回答的都是它所知道的离目标最近的节点，所以越问越近。直到问到的节点给不出更近的，这次查找就结束。页面下方有一张示意图。',
+ refs:[['p2p/discover/lookup.go:121','每轮最多 3 个并发查询'],['p2p/discover/table.go:46','alpha = 3']]},
+{tag:'local',t:'路由表长大，初始化完成',
+ lead:'首次刷新一共做 4 次查找：1 次找自己，3 次找随机目标。做完后路由表里有了几十到上百个节点，标记为初始化完成。',
+ items:['初始化完成后，eth 层的随机游走才开始从路由表里产出候选节点','之后每 30 分钟刷新一次；平时轮流 ping 表里的节点，不响应的会被移除','从这里开始，A 基本不用再找引导节点了'],
+ refs:[['p2p/discover/table.go:476','doRefresh'],['p2p/discover/lookup.go:225','随机游走等待初始化完成'],['p2p/discover/common.go:78','刷新间隔 30 分钟'],['eth/backend.go:1012','随机游走产出候选']]},
+{tag:'udp',t:'ENR：D 不是 BSC 节点，丢弃',
+ lead:'NEIGHBORS 里只有地址和公钥，看不出对方是哪条链的。A 直接向候选节点本人索要名片（ENR），同样走 UDP，同样要先互相验证。',
+ pkt:[['ENRREQUEST','只有过期时间'],['ENRRESPONSE','请求包的哈希，加上对方签名的名片：IP、端口、公钥、eth 字段（ForkID）']],
+ why:'D 名片里的 ForkID 属于以太坊，和 BSC 不兼容，丢弃。没有 eth 字段的节点也一样丢弃。被丢弃的节点永远不会被 TCP 拨号。',
+ refs:[['p2p/discover/v4_udp.go:358','RequestENR'],['eth/backend.go:1015','异步请求每个候选的名片'],['eth/protocols/eth/discovery.go:71','NewNodeFilter，ForkID 检查']]},
+{tag:'udp',t:'ENR：C 是同一条链，进入候选',
+ lead:'C 的 ForkID 和本链兼容：同一个创世块，跟上了同样的硬分叉。C 被放进拨号候选池。',
+ why:'ForkID 由创世哈希和已经过的硬分叉算出（EIP-2124）。每个节点每出一个新块就更新自己名片里的 ForkID，所以没升级的旧版本节点，在硬分叉激活后会在这一步被过滤掉。',
+ refs:[['eth/protocols/eth/discovery.go:41','StartENRUpdater，每个新块更新名片'],['eth/backend.go:1025','加入候选池 discmix']]},
+{tag:'tcp',t:'TCP：A 拨号连接 C',
+ lead:'拨号器有空余出站名额时取出 C。默认最多主动拨 16 个（MaxPeers 50 ÷ 3），剩下 34 个名额留给别人连进来。',
+ items:['拨号前检查：不是自己、有 TCP 端口、没在拨、没连着、对方没在连进来、在 --netrestrict 范围内、35 秒内没拨过','连的是 C 名片里的 IP 和 TCP 端口，15 秒连不上就算失败','静态节点不走前面的发现流程，从这一步直接开始，而且优先拨'],
+ refs:[['p2p/dial.go:259','拨号循环'],['p2p/dial.go:418','checkDial'],['p2p/server.go:590','出站名额 MaxPeers ÷ DialRatio'],['p2p/server.go:48','拨号超时 15 秒']]},
+{tag:'tcp',t:'RLPx：加密握手',
+ lead:'双方用 ECIES 交换临时密钥，之后这条 TCP 连接上的数据全部加密。A 同时确认对方的公钥就是 C 的节点 ID，防止中间人冒充。',
+ items:['必须在 5 秒内完成','随后检查连接数：总数到了 MaxPeers、入站名额满、重复连接、连到自己，都会断开。TrustedNodes 里的节点不受上限限制'],
+ refs:[['p2p/server.go:957','setupConn'],['p2p/transport.go:40','握手超时 5 秒'],['p2p/server.go:800','postHandshakeChecks']]},
+{tag:'tcp',t:'Hello：交换支持的协议',
+ lead:'双方报出客户端名称和支持的协议。BSC 节点支持 eth/68、eth/70、snap/1、bsc/1、bsc/2。',
+ items:['没有共同协议就断开','--peerfilter 可以按客户端名称拒绝','A 还会核对 Hello 里的身份和加密握手得到的公钥是否一致'],
+ refs:[['p2p/server.go:957','setupConn 中的 doProtoHandshake'],['p2p/server.go:815','addPeerChecks']]},
+{tag:'tcp',t:'eth Status：确认是同一条链',
+ lead:'在 eth 协议上再握一次手，比对网络 ID（BSC 主网是 56）、协议版本、创世哈希和 ForkID，并校验总难度 TD。',
+ items:['任何一项不符就断开','BSC 的 eth/70 握手仍然带 TD，Parlia 链同步时要用到'],
+ refs:[['eth/protocols/eth/handshake.go:110','eth/68 的 Status 检查'],['eth/protocols/eth/handshake.go:166','eth/70 的 Status 检查']]},
+{tag:'tcp',t:'扩展握手与准入',
+ lead:'等 snap、bsc 两个扩展协议就绪（bsc 协议会交换 BscCap 消息），再做最后的准入检查。通过后，C 正式成为 A 的 peer。',
+ items:['snap 同步时，不支持 snap 的节点最多只能比支持的多 5 个','总数不能超过 MaxPeers，同一 IP 不能超过 MaxPeersPerIP','TrustedNodes 里的节点和 EVN 节点免检'],
+ refs:[['eth/handler.go:441','runEthPeer'],['eth/protocols/bsc/handshake.go','BscCap 握手']]},
+{tag:'tcp',t:'开始收发数据',
+ lead:'TCP 连接是双向的，不管谁发起，区块、交易、投票都走这条连接。',
+ items:['节点数据库记下了 C，下次启动直接拿来当种子，不再完全依赖引导节点','连接数满时，每 3 到 7 分钟随机断开一个已连 10 分钟以上的普通节点，给新节点腾位置','30 秒收不到任何消息（正常每 15 秒有一次 ping），或 20 秒发不出一条消息，连接会断开'],
+ refs:[['eth/handler.go:774','BroadcastBlock，广播区块'],['eth/dropper.go','连接轮换'],['p2p/server.go:59','读超时 30 秒'],['p2p/peer.go:49','每 15 秒 ping 一次']]}
+];
+const N=STEPS.length;
+
+/* ================= sequence diagram ================= */
+const W=800;
+const ACT={A:{x:110,n:'新节点 A',d:'第一次启动'},B:{x:320,n:'引导节点 B',d:'只需开 UDP'},C:{x:530,n:'节点 C',d:'BSC 节点'},D:{x:712,n:'节点 D',d:'以太坊节点'}};
+const ROWS=[
+ {ph:'UDP：认识引导节点'},
+ {s:1,n:'A',l:['读入 6 个引导节点','路由表：6 个']},
+ {s:2,m:['A','B'],p:'udp',l:'PING'},
+ {s:3,m:['B','A'],p:'udp',l:'PONG（你的地址是 1.2.3.4）'},
+ {s:4,m:['B','A'],p:'udp',l:'PING（反向验证）'},
+ {s:5,m:['A','B'],p:'udp',l:'PONG'},
+ {s:5,n:'B',l:['A 的地址已验证','把 A 记进路由表']},
+ {ph:'UDP：问路'},
+ {s:6,m:['A','B'],p:'udp',l:'FINDNODE（谁离 A 最近）'},
+ {s:7,m:['B','A'],p:'udp',l:'NEIGHBORS（12 个节点）'},
+ {s:7,m:['B','A'],p:'udp',l:'NEIGHBORS（4 个节点）'},
+ {s:7,n:'A',l:['路由表：22 个']},
+ {ph:'UDP：一轮轮扩散'},
+ {s:8,m:['A','C'],p:'udp',l:'PING，FINDNODE'},
+ {s:8,m:['C','A'],p:'udp',l:'PONG，NEIGHBORS'},
+ {s:9,n:'A',l:['再做 3 次随机查找','路由表涨到上百个']},
+ {ph:'UDP：确认是不是同一条链'},
+ {s:10,m:['A','D'],p:'udp',l:'ENRREQUEST'},
+ {s:10,m:['D','A'],p:'udp',l:'ENRRESPONSE（ForkID 属于以太坊）'},
+ {s:10,n:'A',t:'bad',l:['ForkID 不兼容','丢弃 D，不会去连']},
+ {s:11,m:['A','C'],p:'udp',l:'ENRREQUEST'},
+ {s:11,m:['C','A'],p:'udp',l:'ENRRESPONSE（ForkID 属于 BSC）'},
+ {s:11,n:'A',t:'ok',l:['ForkID 兼容','C 进入拨号候选']},
+ {ph:'TCP：建立连接并握手'},
+ {s:12,m:['A','C'],p:'tcp',l:'TCP 连接 C 的 30303 端口'},
+ {s:13,m:['A','C'],p:'tcp',l:'RLPx auth'},
+ {s:13,m:['C','A'],p:'tcp',l:'RLPx ack'},
+ {s:14,m:['A','C'],p:'tcp',l:'Hello（我支持的协议）'},
+ {s:14,m:['C','A'],p:'tcp',l:'Hello'},
+ {s:15,m:['A','C'],p:'tcp',l:'eth Status'},
+ {s:15,m:['C','A'],p:'tcp',l:'eth Status'},
+ {s:16,m:['A','C'],p:'tcp',l:'bsc 握手（BscCap）'},
+ {s:16,m:['C','A'],p:'tcp',l:'bsc 握手（BscCap）'},
+ {s:16,n:'A',t:'ok',l:['准入检查通过','C 成为 peer']},
+ {ph:'之后'},
+ {s:17,m:['A','C'],p:'tcp',both:true,l:'区块、交易、投票'}
+];
+
+const svg=document.getElementById('seq');
+const defs=el('defs',{},svg);
+['udp','tcp'].forEach(p=>{const mk=el('marker',{id:'m-'+p,viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:p==='tcp'?5:6,markerHeight:p==='tcp'?5:6,orient:'auto-start-reverse'},defs);el('path',{d:'M0 0L10 5L0 10z',fill:COL[p]},mk);});
+const gBand=el('g',{},svg),gLife=el('g',{},svg),gAct=el('g',{},svg),gBack=el('g',{},svg),gRows=el('g',{},svg);
+const ext={},rowEls=[];
+let y=78;
+ROWS.forEach(r=>{
+  if(r.ph){const g=el('g',{class:'ph'},gRows);const t=el('text',{x:14,y:y+22},g);t.textContent=r.ph;el('line',{x1:14,y1:y+30,x2:W-14,y2:y+30},g);y+=40;return;}
+  const g=el('g',{class:'r','data-s':r.s},gRows);rowEls.push(g);
+  const y0=y;
+  if(r.m){
+    const x1=ACT[r.m[0]].x,x2=ACT[r.m[1]].x,dir=Math.sign(x2-x1);
+    el('rect',{class:'hit',x:Math.min(x1,x2)-6,y:y,width:Math.abs(x2-x1)+12,height:34},g);
+    const a={class:'msg '+r.p,x1:x1+dir*(r.both?9:4),y1:y+25,x2:x2-dir*9,y2:y+25,'marker-end':'url(#m-'+r.p+')'};
+    if(r.both)a['marker-start']='url(#m-'+r.p+')';
+    el('line',a,g);
+    const t=el('text',{class:'lbl',x:(x1+x2)/2,y:y+17},g);t.textContent=r.l;
+    y+=38;
+  }else{
+    const x=ACT[r.n].x,h=r.l.length*17+12,w=196;
+    el('rect',{x:x-w/2,y:y+6,width:w,height:h,rx:5,fill:'#fff'},gBack);
+    el('rect',{class:'note'+(r.t?' '+r.t:''),x:x-w/2,y:y+6,width:w,height:h,rx:5},g);
+    r.l.forEach((s,i)=>{const t=el('text',{class:'note-t',x:x,y:y+23+i*17},g);t.textContent=s;});
+    y+=h+16;
+  }
+  const e=ext[r.s]||(ext[r.s]={a:y0,b:y});e.a=Math.min(e.a,y0);e.b=Math.max(e.b,y);
+  g.addEventListener('click',()=>go(r.s,true));
+});
+const H=y+16;
+svg.setAttribute('viewBox','0 0 '+W+' '+H);
+const bands={};
+for(const s in ext){bands[s]=el('rect',{class:'band',x:4,y:ext[s].a+1,width:W-8,height:ext[s].b-ext[s].a-2,rx:4},gBand);}
+for(const k in ACT){
+  const a=ACT[k];
+  el('line',{class:'life',x1:a.x,y1:62,x2:a.x,y2:H-8},gLife);
+  const st={A:{fill:'#17212B',stroke:'#17212B'},B:{fill:'#fff',stroke:'#0E8A7D','stroke-dasharray':'5 4'},C:{fill:'#fff',stroke:'#2C5BD4'},D:{fill:'#fff',stroke:'#B9C3C1'}}[k];
+  el('rect',Object.assign({x:a.x-78,y:10,width:156,height:50,rx:6,'stroke-width':2},st),gAct);
+  const t1=el('text',{class:'actor-n',x:a.x,y:32,'text-anchor':'middle',fill:k==='A'?'#fff':(k==='D'?'#7C8A92':'#17212B')},gAct);t1.textContent=a.n;
+  const t2=el('text',{class:'actor-d',x:a.x,y:50,'text-anchor':'middle',style:k==='A'?'fill:#C5CED3':''},gAct);t2.textContent=a.d;
+}
+
+/* ================= panel ================= */
+const panel=document.getElementById('panel');
+const TAGN={udp:'UDP',tcp:'TCP',local:'本地处理'};
+let cur=1;
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function renderPanel(){
+  const s=STEPS[cur-1];
+  let h='<div class="prog" role="group" aria-label="跳到某一步">'+STEPS.map((x,i)=>'<button style="--c:'+COL[x.tag]+'" class="'+(i+1===cur?'on':(i+1<cur?'done':''))+'" data-go="'+(i+1)+'" aria-label="第 '+(i+1)+' 步：'+esc(x.t)+'"'+(i+1===cur?' aria-current="step"':'')+'></button>').join('')+'</div>';
+  h+='<div class="nav"><button class="prev" '+(cur===1?'disabled':'')+'>上一步</button><button class="next">'+(cur===N?'回到第 1 步':'下一步')+'</button></div>';
+  h+='<p class="kbd">也可以用键盘的左右方向键</p>';
+  h+='<div class="p-top"><span class="tagp '+s.tag+'">'+TAGN[s.tag]+'</span><span>第 '+cur+' 步，共 '+N+' 步</span></div>';
+  h+='<h2>'+esc(s.t)+'</h2><p>'+esc(s.lead)+'</p>';
+  if(s.pkt)h+='<div class="pkt"><div class="h">包里有什么</div><dl>'+s.pkt.map(([k,v])=>'<dt>'+esc(k)+'</dt><dd>'+esc(v)+'</dd>').join('')+'</dl></div>';
+  if(s.why)h+='<p class="why"><b>为什么</b>'+esc(s.why)+'</p>';
+  if(s.items)h+='<ul>'+s.items.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+  h+='<ul class="refs">'+s.refs.map(([c,n])=>'<li><code>'+esc(c)+'</code><span>'+esc(n)+'</span></li>').join('')+'</ul>';
+  panel.innerHTML=h;
+  panel.querySelector('.prev').addEventListener('click',()=>go(cur-1,true));
+  panel.querySelector('.next').addEventListener('click',()=>go(cur===N?1:cur+1,true));
+  panel.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>go(+b.dataset.go,true)));
+}
+const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function go(s,user){
+  if(s<1||s>N)return;
+  cur=s;
+  rowEls.forEach(g=>{const k=+g.dataset.s;g.classList.toggle('cur',k===cur);g.classList.toggle('past',k<cur);g.classList.toggle('fut',k>cur);});
+  for(const k in bands)bands[k].classList.toggle('on',+k===cur);
+  renderPanel();
+  if(user){
+    const r=bands[cur].getBoundingClientRect();
+    if(r.top<70||r.bottom>window.innerHeight-20){window.scrollBy({top:r.top-window.innerHeight*0.35,behavior:reduce?'auto':'smooth'});}
+  }
+}
+document.addEventListener('keydown',e=>{
+  if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;
+  const tg=e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA')return;
+  if(e.key==='ArrowRight'){e.preventDefault();go(cur===N?N:cur+1,true);}
+  else if(e.key==='ArrowLeft'){e.preventDefault();go(cur-1,true);}
+});
+go(1,false);
+
+/* ================= lookup illustration ================= */
+(function(){
+  const s=document.getElementById('lookupSvg');
+  const mul=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const rnd=mul(11);
+  let known=[0.04,0.11,0.19,0.26,0.33,0.41].map(v=>({v,asked:false}));
+  const R=[{t:'启动时',d:'只认识 6 个引导节点',before:[],q:[],nw:known.slice()}];
+  for(let r=1;r<=3;r++){
+    const q=known.filter(n=>!n.asked).sort((a,b)=>b.v-a.v).slice(0,3);q.forEach(n=>n.asked=true);
+    const nw=[];q.forEach(n=>{for(let k=0;k<4;k++)nw.push({v:Math.min(0.97,n.v+(1-n.v)*(0.1+0.6*rnd())),asked:false});});
+    R.push({t:'第 '+r+' 轮',d:'问离 A 最近的 3 个',before:known.slice(),q,nw});known=known.concat(nw);
+  }
+  const q=known.filter(n=>!n.asked).sort((a,b)=>b.v-a.v).slice(0,3);
+  R.push({t:'结束',d:'问不出更近的节点了',before:known.slice(),q,nw:[]});
+  const X0=200,X1=730,xa=v=>X0+v*(X1-X0),AX=770,top=26,dy=58,Hh=top+R.length*dy+46;
+  s.setAttribute('viewBox','0 0 800 '+Hh);
+  el('line',{x1:AX,y1:12,x2:AX,y2:top+R.length*dy-20,stroke:'#17212B','stroke-width':1.5,'stroke-dasharray':'3 4'},s);
+  R.forEach((r,i)=>{
+    const y=top+i*dy+16;
+    const t1=el('text',{x:18,y:y-2,'font-size':14,'font-weight':800,fill:'#17212B'},s);t1.textContent=r.t;
+    const t2=el('text',{x:18,y:y+16,'font-size':12.5,fill:'#55616B'},s);t2.textContent=r.d;
+    el('line',{x1:X0-10,y1:y,x2:X1+10,y2:y,stroke:'#D3DAD8','stroke-width':1.5},s);
+    r.before.forEach(n=>el('circle',{cx:xa(n.v),cy:y,r:4.5,fill:'#B7C0C4'},s));
+    r.nw.forEach(n=>el('circle',{cx:xa(n.v),cy:y,r:5,fill:'#0E8A7D'},s));
+    r.q.forEach(n=>el('circle',{cx:xa(n.v),cy:y,r:9,fill:'none',stroke:'#17212B','stroke-width':2},s));
+    el('circle',{cx:AX,cy:y,r:10,fill:'#17212B'},s);
+    const ta=el('text',{x:AX,y:y+4.5,'font-size':12,'font-weight':800,fill:'#fff','text-anchor':'middle'},s);ta.textContent='A';
+  });
+  const yb=top+R.length*dy+8;
+  const mk=el('marker',{id:'lk-ah',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},el('defs',{},s));el('path',{d:'M0 0L10 5L0 10z',fill:'#55616B'},mk);
+  el('line',{x1:X0,y1:yb,x2:X1,y2:yb,stroke:'#55616B','stroke-width':1.5,'marker-end':'url(#lk-ah)'},s);
+  const c1=el('text',{x:X0,y:yb+20,'font-size':12.5,fill:'#55616B'},s);c1.textContent='离 A 远';
+  const c2=el('text',{x:X1,y:yb+20,'font-size':12.5,fill:'#55616B','text-anchor':'end'},s);c2.textContent='离 A 近（异或距离）';
+})();
+})();
+</script>
+</body>
+</html>
